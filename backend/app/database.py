@@ -1,0 +1,25 @@
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
+import os
+
+DB_PATH = os.environ.get("DATABASE_URL", "sqlite:///./travel_expenses.db")
+
+engine = create_engine(
+    DB_PATH,
+    connect_args={"check_same_thread": False} if DB_PATH.startswith("sqlite") else {},
+    echo=False,
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

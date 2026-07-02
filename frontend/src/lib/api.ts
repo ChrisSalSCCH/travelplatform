@@ -1,191 +1,86 @@
-import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import axios from 'axios';
+import type { Project, TravelRequest, DailyRate } from './types';
 
-// VITE_API_URL is set automatically by the workspace runner.
-// Value: /api  |  Fallback: empty string.
-//
-// IMPORTANT: Because baseURL is "/api", all calls via the `api` instance
-// must use BARE paths — e.g. api.get("/tasks"), NOT api.get("/api/tasks").
-// Using "/api/tasks" would produce the request path /api/api/tasks (WRONG).
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
-/**
- * Standard error shape returned by the backend's global exception handler.
- *
- * Backend wraps every HTTPException + Pydantic ValidationError into:
- *   { error: { code, message, field, details } }
- *
- * Code is UPPER_SNAKE_CASE and entity-prefixed (CUSTOMER_NOT_FOUND,
- * CUSTOMER_DUPLICATE_EMAIL). Use `code` for i18n lookup and `field` for
- * form error highlighting.
- */
-export interface ApiErrorShape {
-  code: string
-  message: string
-  field?: string | null
-  details?: Record<string, unknown>
-}
+const http = axios.create({ baseURL: BASE });
 
-export class ApiError extends Error {
-  readonly code: string
-  readonly field: string | null
-  readonly status: number
-  readonly requestId: string | null
-  readonly details: Record<string, unknown>
+// Projects
+export const getProjects = (activeOnly = false) =>
+  http.get<Project[]>('/projects', { params: { active_only: activeOnly } }).then(r => r.data);
 
-  constructor(
-    status: number,
-    shape: ApiErrorShape,
-    requestId: string | null = null,
-  ) {
-    super(shape.message || shape.code || `HTTP ${status}`)
-    this.name = 'ApiError'
-    this.code = shape.code
-    this.field = shape.field ?? null
-    this.status = status
-    this.requestId = requestId
-    this.details = shape.details ?? {}
-  }
+export const createProject = (data: {
+  code: string;
+  name: string;
+  funder: string;
+  active: boolean;
+}) => http.post<Project>('/projects', data).then(r => r.data);
 
-  /** Convenience: does this error match a specific business code? */
-  is(code: string): boolean {
-    return this.code === code
-  }
-}
+export const updateProject = (id: string, data: Partial<Project>) =>
+  http.patch<Project>(`/projects/${id}`, data).then(r => r.data);
 
-/**
- * Optional toast-like sink so consumers can display errors without
- * importing a toast library here. Set via `setApiErrorReporter(fn)`;
- * left unset by default so the template has no hard dep on sonner /
- * react-hot-toast / etc.
- */
-type ErrorReporter = (err: ApiError) => void
-let _reporter: ErrorReporter | null = null
+export const deleteProject = (id: string) =>
+  http.delete(`/projects/${id}`);
 
-export function setApiErrorReporter(fn: ErrorReporter | null): void {
-  _reporter = fn
-}
+// Requests
+export const getRequests = (params?: {
+  status?: string;
+  project_id?: string;
+  search?: string;
+}) => http.get<TravelRequest[]>('/requests', { params }).then(r => r.data);
 
-export const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
+export const getRequest = (id: string) =>
+  http.get<TravelRequest>(`/requests/${id}`).then(r => r.data);
+
+export const createRequest = (data: {
+  employee_name: string;
+  employee_email: string;
+  department: string;
+  destination: string;
+  purpose: string;
+  trip_start: string;
+  trip_end: string;
+  project_id: string;
+}) => http.post<TravelRequest>('/requests', data).then(r => r.data);
+
+export const submitRequest = (id: string) =>
+  http.post<TravelRequest>(`/requests/${id}/submit`).then(r => r.data);
+
+export const approveRequest = (id: string) =>
+  http.post<TravelRequest>(`/requests/${id}/approve`).then(r => r.data);
+
+export const rejectRequest = (id: string, reason: string) =>
+  http.post<TravelRequest>(`/requests/${id}/reject`, { reason }).then(r => r.data);
+
+// Items
+export const addItem = (
+  requestId: string,
+  data: {
+    category: string;
+    date: string;
+    description: string;
+    km?: number | null;
+    amount: number;
+    receipt_url?: string | null;
   },
-})
+) => http.post(`/requests/${requestId}/items`, data).then(r => r.data);
 
-// Request interceptor — attach a fresh X-Request-ID for end-to-end tracing.
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (config.headers && !config.headers.get('X-Request-ID')) {
-    // 16-char hex id; collision-resistant enough for per-request tracing.
-    const id =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
-        : Math.random().toString(16).slice(2, 18).padEnd(16, '0')
-    config.headers.set('X-Request-ID', id)
-  }
-  return config
-})
+export const deleteItem = (itemId: string) =>
+  http.delete(`/items/${itemId}`);
 
-// Response interceptor — parse the standard error envelope into a typed
-// ApiError, forward it to the optional reporter, and re-reject so the
-// caller can still handle it with try/catch.
-api.interceptors.response.use(
-  (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    if (error.response) {
-      const status = error.response.status
-      const data = error.response.data as { error?: ApiErrorShape } | undefined
-      const requestId =
-        (error.response.headers['x-request-id'] as string | undefined) ??
-        (error.config?.headers?.get?.('X-Request-ID') as string | undefined) ??
-        null
+// Rates
+export const getRates = () =>
+  http.get<DailyRate[]>('/rates').then(r => r.data);
 
-      const shape: ApiErrorShape =
-        data?.error ?? {
-          code: `HTTP_${status}`,
-          message:
-            (error.response.data as { detail?: string; message?: string } | undefined)
-              ?.detail ??
-            (error.response.data as { detail?: string; message?: string } | undefined)
-              ?.message ??
-            error.message,
-        }
+export const updateRate = (id: string, data: { amount?: number; label?: string; notes?: string }) =>
+  http.patch<DailyRate>(`/rates/${id}`, data).then(r => r.data);
 
-      const apiErr = new ApiError(status, shape, requestId)
-      if (_reporter) {
-        try {
-          _reporter(apiErr)
-        } catch (e) {
-          // Never let a reporter failure mask the original error.
-          console.error('[api] error reporter threw:', e)
-        }
-      }
-      return Promise.reject(apiErr)
-    }
-
-    if (error.request) {
-      const apiErr = new ApiError(
-        0,
-        { code: 'NETWORK_ERROR', message: 'No response from server' },
-      )
-      if (_reporter) {
-        try {
-          _reporter(apiErr)
-        } catch {
-          /* ignore */
-        }
-      }
-      return Promise.reject(apiErr)
-    }
-
-    return Promise.reject(error)
-  },
-)
-
-// ---------------------------------------------------------------------------
-// Paginated response shape (matches backend PaginatedResponse model)
-// ---------------------------------------------------------------------------
-
-export interface PaginatedResponse<T> {
-  items: T[]
-  total: number
-  page: number
-  size: number
-  pages: number
-}
-
-// Generic CRUD helpers.
-// `endpoint` is a BARE path — "/tasks", "/customers", etc.
-// The axios baseURL (/api) is prepended automatically.
-// WRONG: getAll("/api/tasks")  →  GET /api/api/tasks
-// RIGHT: getAll("/tasks")      →  GET /api/tasks
-
-export async function getAll<T>(endpoint: string, params?: Record<string, unknown>): Promise<T[]> {
-  const response = await api.get<T[] | { items: T[] }>(endpoint, { params })
-  return Array.isArray(response.data) ? response.data : response.data.items
-}
-
-export async function getPaginated<T>(endpoint: string, params?: Record<string, unknown>): Promise<PaginatedResponse<T>> {
-  const response = await api.get<PaginatedResponse<T>>(endpoint, { params })
-  return response.data
-}
-
-export async function getOne<T>(endpoint: string, id: string): Promise<T> {
-  const response = await api.get<T>(`${endpoint}/${id}`)
-  return response.data
-}
-
-export async function create<T>(endpoint: string, data: Partial<T>): Promise<T> {
-  const response = await api.post<T>(endpoint, data)
-  return response.data
-}
-
-export async function update<T>(endpoint: string, id: string, data: Partial<T>): Promise<T> {
-  const response = await api.put<T>(`${endpoint}/${id}`, data)
-  return response.data
-}
-
-export async function remove(endpoint: string, id: string): Promise<void> {
-  await api.delete(`${endpoint}/${id}`)
-}
-
-export default api
+// Upload
+export const uploadReceipt = async (file: File): Promise<string> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await http.post<{ url: string }>('/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data.url;
+};

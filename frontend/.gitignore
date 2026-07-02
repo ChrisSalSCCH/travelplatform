@@ -29,3 +29,8 @@ __pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# XAIO workspace runner (auto-generated)
+vite.config.xaio.ts
+static/design-mode-runtime.js
+static/console-interceptor.js
