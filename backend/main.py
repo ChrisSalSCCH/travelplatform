@@ -8,16 +8,13 @@ from app.seed import seed_database
 from app.migrate import run_migrations
 from app.routers import projects, requests, rates, upload
 from app.routers.requests import items_router
-from app.routers import route
+from app.routers import route, workpackages
 
-# Create any brand-new tables (route_legs, daily_rates, etc.)
 Base.metadata.create_all(bind=engine)
 
-# Apply lightweight column migrations for existing tables
 with SessionLocal() as db:
     run_migrations(db)
 
-# Seed reference data
 with SessionLocal() as db:
     seed_database(db)
 
@@ -37,6 +34,7 @@ app.include_router(items_router, prefix="/api")
 app.include_router(rates.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(route.router, prefix="/api")
+app.include_router(workpackages.router, prefix="/api")
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "./uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

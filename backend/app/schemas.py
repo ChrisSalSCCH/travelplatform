@@ -45,22 +45,49 @@ class ProjectResponse(BaseModel):
     updated_at: datetime
 
 
+# ── Work Packages ───────────────────────────────────────────────────────────────
+
+class WorkPackageCreate(BaseModel):
+    project_id: str
+    code: str
+    name: str
+    active: bool = True
+
+    @field_validator("code")
+    @classmethod
+    def code_max(cls, v: str) -> str:
+        if len(v) > 50:
+            raise ValueError("code max 50 characters")
+        return v
+
+
+class WorkPackageUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class WorkPackageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    project_id: str
+    code: str
+    name: str
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 # ── Route Legs ─────────────────────────────────────────────────────────────────
 
 class RouteLegCreate(BaseModel):
     origin: str
     destination: str
+    waypoints: Optional[list[str]] = None
     distance_km: Optional[Decimal] = None
     duration_min: Optional[int] = None
     return_trip: bool = False
     leg_order: int = 0
-
-    @field_validator("origin", "destination")
-    @classmethod
-    def max_400(cls, v: str) -> str:
-        if len(v) > 400:
-            raise ValueError("max 400 characters")
-        return v
 
 
 class RouteLegResponse(BaseModel):
@@ -70,17 +97,17 @@ class RouteLegResponse(BaseModel):
     leg_order: int
     origin: str
     destination: str
+    waypoints: Optional[str]  # raw JSON string from DB
     distance_km: Optional[Decimal]
     duration_min: Optional[int]
     return_trip: bool
     created_at: datetime
 
 
-# ── Route Calculate Request/Response ─────────────────────────────────────────────
-
 class RouteCalculateRequest(BaseModel):
     origin: str
     destination: str
+    waypoints: Optional[list[str]] = None
 
 
 class RouteCalculateResponse(BaseModel):
@@ -141,23 +168,27 @@ class ExpenseItemResponse(BaseModel):
 # ── Travel Requests ───────────────────────────────────────────────────────────
 
 class TravelRequestCreate(BaseModel):
-    employee_name: str
-    employee_email: str
-    department: str
-    destination: str
+    first_name: str
+    last_name: str
+    employee_email: Optional[str] = None
+    department: Optional[str] = None
+    destination: Optional[str] = None
     purpose: str
     work_package: Optional[str] = None
     trip_start: date
     trip_end: date
     departure_time: Optional[datetime] = None
     return_time: Optional[datetime] = None
+    meal_breakfast: bool = False
+    meal_lunch: bool = False
+    meal_dinner: bool = False
     project_id: str
 
-    @field_validator("employee_name", "department", "destination")
+    @field_validator("first_name", "last_name")
     @classmethod
-    def max_200(cls, v: str) -> str:
-        if len(v) > 200:
-            raise ValueError("max 200 characters")
+    def max_100(cls, v: str) -> str:
+        if len(v) > 100:
+            raise ValueError("max 100 characters")
         return v
 
     @field_validator("purpose")
@@ -169,7 +200,8 @@ class TravelRequestCreate(BaseModel):
 
 
 class TravelRequestUpdate(BaseModel):
-    employee_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     employee_email: Optional[str] = None
     department: Optional[str] = None
     destination: Optional[str] = None
@@ -179,22 +211,30 @@ class TravelRequestUpdate(BaseModel):
     trip_end: Optional[date] = None
     departure_time: Optional[datetime] = None
     return_time: Optional[datetime] = None
+    meal_breakfast: Optional[bool] = None
+    meal_lunch: Optional[bool] = None
+    meal_dinner: Optional[bool] = None
     project_id: Optional[str] = None
 
 
 class TravelRequestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    first_name: str
+    last_name: str
     employee_name: str
-    employee_email: str
-    department: str
-    destination: str
+    employee_email: Optional[str]
+    department: Optional[str]
+    destination: Optional[str]
     purpose: str
     work_package: Optional[str]
     trip_start: date
     trip_end: date
     departure_time: Optional[datetime]
     return_time: Optional[datetime]
+    meal_breakfast: bool
+    meal_lunch: bool
+    meal_dinner: bool
     project_id: str
     status: str
     rejection_reason: Optional[str]

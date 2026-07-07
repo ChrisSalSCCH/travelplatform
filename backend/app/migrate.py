@@ -1,7 +1,3 @@
-"""Lightweight migration helper for SQLite.
-Runs ALTER TABLE ADD COLUMN statements for any column that does not yet exist.
-Safe to re-run on every startup (checks existence first).
-"""
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 import logging
@@ -14,7 +10,14 @@ def _columns(db: Session, table: str) -> set[str]:
     return {row[1] for row in rows}
 
 
+def _tables(db: Session) -> set[str]:
+    rows = db.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()
+    return {row[0] for row in rows}
+
+
 def _add_column(db: Session, table: str, column: str, definition: str) -> None:
+    if table not in _tables(db):
+        return
     existing = _columns(db, table)
     if column not in existing:
         db.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
@@ -23,13 +26,22 @@ def _add_column(db: Session, table: str, column: str, definition: str) -> None:
 
 
 def run_migrations(db: Session) -> None:
-    """Add any missing columns to existing tables."""
-
-    # travel_requests new columns
+    # travel_requests — original additions
     _add_column(db, "travel_requests", "work_package", "VARCHAR(200)")
     _add_column(db, "travel_requests", "departure_time", "DATETIME")
     _add_column(db, "travel_requests", "return_time", "DATETIME")
 
-    # route_legs table is created by create_all if missing,
-    # but we ensure the table exists via create_all in main.py
+    # travel_requests — new fields
+    _add_column(db, "travel_requests", "first_name", "VARCHAR(100) NOT NULL DEFAULT ''")
+    _add_column(db, "travel_requests", "last_name", "VARCHAR(100) NOT NULL DEFAULT ''")
+    _add_column(db, "travel_requests", "meal_breakfast", "BOOLEAN NOT NULL DEFAULT 0")
+    _add_column(db, "travel_requests", "meal_lunch", "BOOLEAN NOT NULL DEFAULT 0")
+    _add_column(db, "travel_requests", "meal_dinner", "BOOLEAN NOT NULL DEFAULT 0")
+
+    # Make destination/email/department nullable (already nullable in new model)
+    # SQLite doesn\'t support DROP NOT NULL, existing rows are fine
+
+    # route_legs — waypoints
+    _add_column(db, "route_legs", "waypoints", "TEXT")
+
     log.info("Migrations complete.")

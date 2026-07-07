@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
@@ -55,7 +56,9 @@ def list_requests(
     if search:
         term = f"%{search}%"
         q = q.filter(
-            TravelRequest.employee_name.ilike(term)
+            TravelRequest.first_name.ilike(term)
+            | TravelRequest.last_name.ilike(term)
+            | TravelRequest.employee_name.ilike(term)
             | TravelRequest.employee_email.ilike(term)
         )
     return q.order_by(TravelRequest.created_at.desc()).all()
@@ -64,6 +67,8 @@ def list_requests(
 @router.post("", response_model=TravelRequestResponse, status_code=201)
 def create_request(body: TravelRequestCreate, db: Session = Depends(get_db)):
     data = body.model_dump()
+    # keep employee_name in sync for backward compat
+    data["employee_name"] = f"{body.first_name} {body.last_name}".strip()
     req = TravelRequest(id=str(uuid.uuid4()), status="draft", **data)
     db.add(req)
     db.commit()
@@ -80,8 +85,11 @@ def update_request(request_id: str, body: TravelRequestUpdate, db: Session = Dep
     req = _load_request(request_id, db)
     if req.status != "draft":
         raise HTTPException(400, "Only draft requests can be edited")
-    for key, val in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    for key, val in updates.items():
         setattr(req, key, val)
+    if "first_name" in updates or "last_name" in updates:
+        req.employee_name = f"{req.first_name} {req.last_name}".strip()
     req.updated_at = datetime.now(timezone.utc)
     db.commit()
     return _load_request(request_id, db)
@@ -125,9 +133,7 @@ def reject_request(request_id: str, body: RejectBody, db: Session = Depends(get_
 
 @router.post("/{request_id}/route", response_model=list[RouteLegResponse], status_code=201)
 def save_route_legs(request_id: str, legs: list[RouteLegCreate], db: Session = Depends(get_db)):
-    """Replace all route legs for a request (used on submit)."""
     req = _load_request(request_id, db)
-    # Delete existing legs
     db.query(RouteLeg).filter(RouteLeg.request_id == request_id).delete()
     new_legs = []
     for i, leg in enumerate(legs):
@@ -137,6 +143,7 @@ def save_route_legs(request_id: str, legs: list[RouteLegCreate], db: Session = D
             leg_order=leg.leg_order if leg.leg_order else i,
             origin=leg.origin,
             destination=leg.destination,
+            waypoints=json.dumps(leg.waypoints) if leg.waypoints else None,
             distance_km=leg.distance_km,
             duration_min=leg.duration_min,
             return_trip=leg.return_trip,

@@ -3,17 +3,31 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Info, Plus, Trash2, Upload, CheckCircle2, Car,
-  MapPin, RotateCcw, Loader2, Navigation, Receipt,
+  MapPin, RotateCcw, Loader2, Navigation, Receipt, X,
 } from 'lucide-react';
 import type { DailyRate, ReceiptDraft, ReceiptCategory } from '../lib/types';
 import {
-  getProjects, getRates, createRequest, saveRouteLegs,
-  addItem, submitRequest, uploadReceipt, calculateRoute,
+  getProjects, getWorkPackages, getRates,
+  createRequest, saveRouteLegs, addItem, submitRequest, uploadReceipt, calculateRoute,
 } from '../lib/api';
 import { formatCurrency } from '../lib/utils';
+import { calcDailyAllowance, calcTripHours, formatDuration } from '../lib/allowance';
 import Layout from '../components/Layout';
+import Combobox from '../components/Combobox';
 
-const DEFAULT_LOCATION = 'Softwarepark 32a, 4232 Hagenberg';
+const DEFAULT_ORIGIN = 'Softwarepark 32a, 4232 Hagenberg';
+
+const PURPOSE_OPTIONS = [
+  'Conference / Workshop',
+  'Client Meeting',
+  'Internal Meeting',
+  'Training / Course',
+  'Site Visit',
+  'Trade Fair / Exhibition',
+  'Research Visit',
+  'Other',
+];
+
 const RECEIPT_CATS: { value: ReceiptCategory; label: string }[] = [
   { value: 'accommodation', label: 'Hotel / Accommodation' },
   { value: 'transport', label: 'Transport (flight, train, taxi)' },
@@ -22,31 +36,9 @@ const RECEIPT_CATS: { value: ReceiptCategory; label: string }[] = [
 
 function genId() { return Math.random().toString(36).slice(2); }
 
-// ── helpers ───────────────────────────────────────────────────────────────
+// ── Field wrapper ─────────────────────────────────────────────────────────────────
 
-function calcDailyAllowanceHours(departure: string, returnTime: string): number {
-  if (!departure || !returnTime) return 0;
-  const diff = (new Date(returnTime).getTime() - new Date(departure).getTime()) / 3600000;
-  return Math.max(0, diff);
-}
-
-function hoursToAllowance(hours: number, rate: number): number {
-  if (hours >= 12) return rate;
-  if (hours >= 3) return rate / 2;
-  return 0;
-}
-
-function formatDuration(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h > 0 ? `${h}h ${m}min` : `${m}min`;
-}
-
-// ── Field ─────────────────────────────────────────────────────────────────────
-
-function Field({
-  label, required, children, hint, className = '',
-}: {
+function Field({ label, required, children, hint, className = '' }: {
   label: string; required?: boolean; children: React.ReactNode;
   hint?: string; className?: string;
 }) {
@@ -61,11 +53,9 @@ function Field({
   );
 }
 
-// ── Section wrapper ──────────────────────────────────────────────────────────
+// ── Section card ───────────────────────────────────────────────────────────────────
 
-function Section({
-  icon: Icon, title, subtitle, children, accent = false,
-}: {
+function Section({ icon: Icon, title, subtitle, children, accent = false }: {
   icon: React.ElementType; title: string; subtitle?: string;
   children: React.ReactNode; accent?: boolean;
 }) {
@@ -78,10 +68,8 @@ function Section({
       }}
     >
       <div className="flex items-start gap-3">
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: 'rgba(0,255,65,0.1)', border: '1px solid rgba(0,255,65,0.2)' }}
-        >
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(0,255,65,0.1)', border: '1px solid rgba(0,255,65,0.2)' }}>
           <Icon size={18} style={{ color: 'var(--scch-green)' }} />
         </div>
         <div>
@@ -94,24 +82,28 @@ function Section({
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────────
 
 export default function SubmitPage() {
-  // Trip Details
-  const [name, setName] = useState('');
+  // ─ Trip Details
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [department, setDepartment] = useState('');
   const [projectId, setProjectId] = useState('');
   const [workPackage, setWorkPackage] = useState('');
-  const [destination, setDestination] = useState('');
   const [purpose, setPurpose] = useState('');
   const [departureTime, setDepartureTime] = useState('');
   const [returnTime, setReturnTime] = useState('');
+  const [mealBreakfast, setMealBreakfast] = useState(false);
+  const [mealLunch, setMealLunch] = useState(false);
+  const [mealDinner, setMealDinner] = useState(false);
 
-  // Car route section
+  // ─ Car route
   const [carEnabled, setCarEnabled] = useState(false);
-  const [origin, setOrigin] = useState(DEFAULT_LOCATION);
-  const [routeDest, setRouteDest] = useState(DEFAULT_LOCATION);
+  const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
+  const [routeDest, setRouteDest] = useState('');
+  const [waypoints, setWaypoints] = useState<string[]>([]);
   const [returnTrip, setReturnTrip] = useState(true);
   const [routeResult, setRouteResult] = useState<{ distance_km: number; duration_min: number } | null>(null);
   const [manualKm, setManualKm] = useState('');
@@ -119,45 +111,58 @@ export default function SubmitPage() {
   const [routeError, setRouteError] = useState('');
   const [noApiKey, setNoApiKey] = useState(false);
 
-  // Receipts section
+  // ─ Receipts
   const [receipts, setReceipts] = useState<ReceiptDraft[]>([]);
-
   const [submittedId, setSubmittedId] = useState<string | null>(null);
 
+  // ─ Data
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects(true) });
+  const { data: workPackages = [] } = useQuery({
+    queryKey: ['workpackages', projectId],
+    queryFn: () => getWorkPackages(projectId || undefined, true),
+    enabled: true,
+  });
   const { data: rates = [] } = useQuery({ queryKey: ['rates'], queryFn: getRates });
 
   const rateMap = Object.fromEntries(rates.map((r: DailyRate) => [r.key, Number(r.amount)]));
   const kmRate = rateMap['mileage_car'] ?? 0.42;
   const daRate = rateMap['daily_allowance_domestic'] ?? 26.40;
 
-  // Calculated values
-  const tripHours = calcDailyAllowanceHours(departureTime, returnTime);
-  const dailyAllowance = hoursToAllowance(tripHours, daRate);
+  // ─ Calculations
+  const tripHours = calcTripHours(departureTime, returnTime);
+  const dailyAllowance = calcDailyAllowance(tripHours, daRate, mealBreakfast, mealLunch, mealDinner);
+  const allowanceEligible = tripHours >= 3;
 
   const effectiveKm = carEnabled
-    ? (noApiKey || !routeResult
-      ? Number(manualKm) || 0
-      : (routeResult.distance_km ?? 0) * (returnTrip ? 2 : 1))
+    ? (noApiKey || !routeResult ? Number(manualKm) || 0 : routeResult.distance_km * (returnTrip ? 2 : 1))
     : 0;
   const mileageCost = effectiveKm * kmRate;
-
   const receiptTotal = receipts.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const grandTotal = dailyAllowance + mileageCost + receiptTotal;
 
-  // Route calculation
+  const tripStart = departureTime ? departureTime.split('T')[0] : '';
+  const tripEnd = returnTime ? returnTime.split('T')[0] : tripStart;
+
+  // ─ Project combobox options
+  const projectOptions = projects.map(p => ({ value: p.id, label: `${p.code} — ${p.name}`, sub: p.funder }));
+  const wpOptions = workPackages.map(wp => ({ value: `${wp.code} — ${wp.name}`, label: `${wp.code} — ${wp.name}` }));
+  const purposeOptions = PURPOSE_OPTIONS.map(p => ({ value: p, label: p }));
+
+  // ─ Route calculation
   const handleCalculateRoute = useCallback(async () => {
+    if (!routeDest) return;
     setRouteLoading(true);
     setRouteError('');
     setRouteResult(null);
     try {
-      const res = await calculateRoute(origin, routeDest);
+      const res = await calculateRoute(origin, routeDest, waypoints.filter(Boolean));
       if (res.error === 'no_api_key') {
         setNoApiKey(true);
       } else if (res.error) {
-        setRouteError(`Could not calculate route: ${res.error}`);
-      } else if (res.distance_km !== undefined && res.duration_min !== undefined) {
-        setRouteResult({ distance_km: res.distance_km, duration_min: res.duration_min });
+        setRouteError(`Could not calculate: ${res.error}`);
+        setNoApiKey(true);
+      } else if (res.distance_km !== undefined) {
+        setRouteResult({ distance_km: res.distance_km, duration_min: res.duration_min! });
         setNoApiKey(false);
       }
     } catch {
@@ -166,87 +171,79 @@ export default function SubmitPage() {
     } finally {
       setRouteLoading(false);
     }
-  }, [origin, routeDest]);
+  }, [origin, routeDest, waypoints]);
 
-  // Open navigation in Google Maps
   const handleNavigate = () => {
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(routeDest)}`;
+    const waypointStr = waypoints.filter(Boolean).map(w => encodeURIComponent(w)).join('/');
+    const url = `https://www.google.com/maps/dir/${encodeURIComponent(origin)}/${waypointStr ? waypointStr + '/' : ''}${encodeURIComponent(routeDest)}`;
     window.open(url, '_blank');
   };
 
-  // Receipts
-  const addReceipt = () => {
-    setReceipts(prev => [...prev, {
-      _id: genId(), category: 'accommodation', description: '', amount: '', file: null, receipt_url: null,
-    }]);
-  };
+  // ─ Waypoints
+  const addWaypoint = () => setWaypoints(prev => [...prev, '']);
+  const updateWaypoint = (i: number, v: string) => setWaypoints(prev => prev.map((w, idx) => idx === i ? v : w));
+  const removeWaypoint = (i: number) => setWaypoints(prev => prev.filter((_, idx) => idx !== i));
 
-  const updateReceipt = (id: string, patch: Partial<ReceiptDraft>) => {
-    setReceipts(prev => prev.map(r => r._id === id ? { ...r, ...patch } : r));
-  };
-
+  // ─ Receipts
+  const addReceipt = () => setReceipts(prev => [...prev, { _id: genId(), category: 'accommodation', description: '', amount: '', file: null, receipt_url: null }]);
+  const updateReceipt = (id: string, patch: Partial<ReceiptDraft>) => setReceipts(prev => prev.map(r => r._id === id ? { ...r, ...patch } : r));
   const removeReceipt = (id: string) => setReceipts(prev => prev.filter(r => r._id !== id));
 
-  // Validation
-  const tripStart = departureTime ? departureTime.split('T')[0] : '';
-  const tripEnd = returnTime ? returnTime.split('T')[0] : tripStart;
-  const canSubmit = name && email && department && projectId && destination && purpose && departureTime && returnTime;
+  const canSubmit = firstName && lastName && projectId && purpose && departureTime && returnTime;
 
-  // Submit
+  // ─ Submit
   const submitMutation = useMutation({
     mutationFn: async () => {
       const req = await createRequest({
-        employee_name: name,
-        employee_email: email,
-        department,
-        destination,
+        first_name: firstName,
+        last_name: lastName,
+        employee_email: email || null,
+        department: department || null,
+        destination: routeDest || null,
         purpose,
         work_package: workPackage || null,
         trip_start: tripStart,
         trip_end: tripEnd || tripStart,
         departure_time: departureTime ? new Date(departureTime).toISOString() : null,
         return_time: returnTime ? new Date(returnTime).toISOString() : null,
+        meal_breakfast: mealBreakfast,
+        meal_lunch: mealLunch,
+        meal_dinner: mealDinner,
         project_id: projectId,
       });
 
-      // Save route legs
       if (carEnabled && effectiveKm > 0) {
-        await saveRouteLegs(req.id, [
-          {
-            origin,
-            destination: routeDest,
-            distance_km: routeResult ? routeResult.distance_km * (returnTrip ? 2 : 1) : effectiveKm,
-            duration_min: routeResult ? routeResult.duration_min * (returnTrip ? 2 : 1) : null,
-            return_trip: returnTrip,
-            leg_order: 0,
-          },
-        ]);
-        // Add mileage expense item
+        await saveRouteLegs(req.id, [{
+          origin,
+          destination: routeDest,
+          waypoints: waypoints.filter(Boolean),
+          distance_km: effectiveKm,
+          duration_min: routeResult ? routeResult.duration_min * (returnTrip ? 2 : 1) : null,
+          return_trip: returnTrip,
+          leg_order: 0,
+        }]);
         await addItem(req.id, {
           category: 'mileage',
           date: tripStart,
-          description: `Car trip: ${origin} → ${routeDest}${returnTrip ? ' (return)' : ''}`,
+          description: `Car: ${origin} →${waypoints.filter(Boolean).map(w => ` ${w} →`).join('')} ${routeDest}${returnTrip ? ' (return)' : ''}`,
           km: effectiveKm,
           amount: mileageCost,
         });
       }
 
-      // Add daily allowance item if applicable
       if (dailyAllowance > 0) {
+        const mealNote = [mealBreakfast && 'breakfast', mealLunch && 'lunch', mealDinner && 'dinner'].filter(Boolean).join(', ');
         await addItem(req.id, {
           category: 'daily_allowance',
           date: tripStart,
-          description: `Daily allowance — ${tripHours.toFixed(1)}h trip`,
+          description: `Daily allowance — ${tripHours.toFixed(1)}h${mealNote ? ` (invited: ${mealNote})` : ''}`,
           amount: dailyAllowance,
         });
       }
 
-      // Upload receipts and add items
       for (const receipt of receipts) {
         let receipt_url: string | null = null;
-        if (receipt.file) {
-          try { receipt_url = await uploadReceipt(receipt.file); } catch {}
-        }
+        if (receipt.file) { try { receipt_url = await uploadReceipt(receipt.file); } catch {} }
         if (Number(receipt.amount) > 0) {
           await addItem(req.id, {
             category: receipt.category,
@@ -261,22 +258,27 @@ export default function SubmitPage() {
       await submitRequest(req.id);
       return req.id;
     },
-    onSuccess: id => {
-      setSubmittedId(id);
-      toast.success('Expense report submitted!');
-    },
+    onSuccess: id => { setSubmittedId(id); toast.success('Expense report submitted!'); },
     onError: () => toast.error('Submission failed. Please try again.'),
   });
 
-  // ── Success screen
+  const resetForm = () => {
+    setSubmittedId(null);
+    setFirstName(''); setLastName(''); setEmail(''); setDepartment('');
+    setProjectId(''); setWorkPackage(''); setPurpose('');
+    setDepartureTime(''); setReturnTime('');
+    setMealBreakfast(false); setMealLunch(false); setMealDinner(false);
+    setCarEnabled(false); setOrigin(DEFAULT_ORIGIN); setRouteDest('');
+    setWaypoints([]); setRouteResult(null); setManualKm(''); setReceipts([]);
+  };
+
+  // ─ Success screen
   if (submittedId) {
     return (
       <Layout>
         <div className="max-w-lg mx-auto px-4 py-24 text-center">
-          <div
-            className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-            style={{ background: 'rgba(0,255,65,0.12)', border: '2px solid var(--scch-green)' }}
-          >
+          <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
+            style={{ background: 'rgba(0,255,65,0.12)', border: '2px solid var(--scch-green)' }}>
             <CheckCircle2 size={40} style={{ color: 'var(--scch-green)' }} />
           </div>
           <h1 className="text-3xl mb-3 normal-case">submitted!</h1>
@@ -285,26 +287,12 @@ export default function SubmitPage() {
           </p>
           <div className="scch-card p-4 mb-8" style={{ border: '1px solid rgba(0,255,65,0.3)' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--scch-gray)' }}>Tracking ID</p>
-            <p className="font-mono font-bold text-lg" style={{ color: 'var(--scch-green)' }}>
-              #{submittedId.slice(0, 8).toUpperCase()}
-            </p>
+            <p className="font-mono font-bold text-lg" style={{ color: 'var(--scch-green)' }}>#{submittedId.slice(0, 8).toUpperCase()}</p>
             <p className="text-xs mt-2" style={{ color: 'var(--scch-gray)' }}>
               Total claimed: <strong style={{ color: 'hsl(var(--foreground))' }}>{formatCurrency(grandTotal)}</strong>
             </p>
           </div>
-          <button
-            onClick={() => {
-              setSubmittedId(null);
-              setName(''); setEmail(''); setDepartment(''); setProjectId('');
-              setWorkPackage(''); setDestination(''); setPurpose('');
-              setDepartureTime(''); setReturnTime('');
-              setCarEnabled(false); setOrigin(DEFAULT_LOCATION); setRouteDest(DEFAULT_LOCATION);
-              setRouteResult(null); setManualKm(''); setReceipts([]);
-            }}
-            className="scch-btn-primary px-8 py-3 font-semibold"
-          >
-            Submit another
-          </button>
+          <button onClick={resetForm} className="scch-btn-primary px-8 py-3 font-semibold">Submit another</button>
         </div>
       </Layout>
     );
@@ -313,188 +301,239 @@ export default function SubmitPage() {
   return (
     <Layout>
       <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
-        {/* Page title */}
         <div>
           <h1 className="text-4xl normal-case mb-1">travel expense</h1>
-          <p style={{ color: 'var(--scch-gray)' }}>Complete the sections below and submit for approval.</p>
+          <p style={{ color: 'var(--scch-gray)' }}>Complete the form below and submit for approval.</p>
         </div>
 
-        {/* ── SECTION 1: Trip Details ── */}
-        <Section icon={Info} title="Trip Details" subtitle="General information about the business trip">
+        {/* ─── SECTION 1: Trip Details ─── */}
+        <Section icon={Info} title="Trip Details" subtitle="Required information about your business trip">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Full Name" required>
-              <input className="scch-input w-full px-3 py-2 text-sm" value={name}
-                onChange={e => setName(e.target.value)} placeholder="Maria Muster" />
+
+            {/* Name */}
+            <Field label="First Name" required>
+              <input className="scch-input w-full px-3 py-2 text-sm" value={firstName}
+                onChange={e => setFirstName(e.target.value)} placeholder="Maria" />
             </Field>
-            <Field label="Email" required>
+            <Field label="Last Name" required>
+              <input className="scch-input w-full px-3 py-2 text-sm" value={lastName}
+                onChange={e => setLastName(e.target.value)} placeholder="Muster" />
+            </Field>
+
+            {/* Optional: email + department */}
+            <Field label="Email">
               <input type="email" className="scch-input w-full px-3 py-2 text-sm" value={email}
-                onChange={e => setEmail(e.target.value)} placeholder="m.muster@scch.at" />
+                onChange={e => setEmail(e.target.value)} placeholder="m.muster@scch.at (optional)" />
             </Field>
-            <Field label="Department" required>
+            <Field label="Department">
               <input className="scch-input w-full px-3 py-2 text-sm" value={department}
-                onChange={e => setDepartment(e.target.value)} placeholder="e.g. Research" />
+                onChange={e => setDepartment(e.target.value)} placeholder="Research (optional)" />
             </Field>
-            <Field label="Project" required>
-              <select className="scch-input w-full px-3 py-2 text-sm" value={projectId}
-                onChange={e => setProjectId(e.target.value)}>
-                <option value="">Select project...</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
-                ))}
-              </select>
+
+            {/* Project combobox */}
+            <Field label="Project" required className="sm:col-span-2">
+              <Combobox
+                options={projectOptions}
+                value={projectId}
+                onChange={val => {
+                  // If a project id was selected from list, use it; otherwise store free text as-is
+                  const match = projects.find(p => p.id === val || `${p.code} — ${p.name}` === val);
+                  setProjectId(match ? match.id : val);
+                  setWorkPackage(''); // reset WP on project change
+                }}
+                placeholder="Select or type project..."
+              />
             </Field>
-            <Field label="Work Package" hint="e.g. WP3.2 — Data Analysis" className="sm:col-span-2">
-              <input className="scch-input w-full px-3 py-2 text-sm" value={workPackage}
-                onChange={e => setWorkPackage(e.target.value)} placeholder="WP1, WP2.1, ..." />
+
+            {/* Work package combobox */}
+            <Field label="Work Package" className="sm:col-span-2">
+              <Combobox
+                options={wpOptions}
+                value={workPackage}
+                onChange={setWorkPackage}
+                placeholder={projectId ? 'Select or type work package...' : 'Select a project first...'}
+              />
             </Field>
-            <Field label="Destination" required className="sm:col-span-2">
-              <input className="scch-input w-full px-3 py-2 text-sm" value={destination}
-                onChange={e => setDestination(e.target.value)} placeholder="e.g. Vienna, Austria" />
-            </Field>
+
+            {/* Purpose dropdown */}
             <Field label="Purpose" required className="sm:col-span-2">
-              <textarea className="scch-input w-full px-3 py-2 text-sm resize-none" rows={2} value={purpose}
-                onChange={e => setPurpose(e.target.value)}
-                placeholder="Conference, client meeting, workshop..." />
+              <Combobox
+                options={purposeOptions}
+                value={purpose}
+                onChange={setPurpose}
+                placeholder="Select or describe purpose..."
+              />
             </Field>
-            <Field label="Departure (date & time)" required
-              hint="Used to calculate daily allowance (§ 26 EStG)">
+
+            {/* Departure + Return */}
+            <Field label="Departure" required hint="Date & time — used to calculate daily allowance (§ 26 EStG)">
               <input type="datetime-local" className="scch-input w-full px-3 py-2 text-sm"
                 value={departureTime} onChange={e => setDepartureTime(e.target.value)} />
             </Field>
-            <Field label="Return (date & time)" required>
+            <Field label="Return" required>
               <input type="datetime-local" className="scch-input w-full px-3 py-2 text-sm"
                 value={returnTime} onChange={e => setReturnTime(e.target.value)} />
             </Field>
           </div>
 
-          {/* Daily allowance preview */}
+          {/* Daily allowance panel */}
           {tripHours > 0 && (
             <div
-              className="flex items-center justify-between p-3 rounded-lg text-sm"
+              className="rounded-lg p-4 space-y-3"
               style={{
-                background: dailyAllowance > 0 ? 'rgba(0,255,65,0.07)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${dailyAllowance > 0 ? 'rgba(0,255,65,0.2)' : 'hsl(var(--border))'}`,
+                background: allowanceEligible ? 'rgba(0,255,65,0.06)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${allowanceEligible ? 'rgba(0,255,65,0.2)' : 'hsl(var(--border))'}`,
               }}
             >
-              <div>
-                <p className="font-semibold text-xs" style={{ color: 'var(--scch-gray)' }}>Daily Allowance (§ 26 EStG)</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--scch-gray)' }}>
-                  {tripHours.toFixed(1)}h trip —
-                  {tripHours >= 12 ? ' full rate (>12h)'
-                    : tripHours >= 3 ? ' half rate (3–12h)'
-                    : ' not eligible (<3h)'}
-                </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--scch-gray)' }}>Daily Allowance (§ 26 EStG)</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--scch-gray)' }}>
+                    {tripHours.toFixed(1)}h —
+                    {tripHours >= 12
+                      ? ' full rate (> 12h)'
+                      : tripHours >= 3
+                      ? ' half rate (3–12h) — no meal deductions apply'
+                      : ' not eligible (< 3h)'}
+                  </p>
+                </div>
+                <span className="font-bold text-lg" style={{ color: allowanceEligible ? 'var(--scch-green)' : 'hsl(var(--muted-foreground))' }}>
+                  {formatCurrency(dailyAllowance)}
+                </span>
               </div>
-              <span className="font-bold text-base" style={{ color: dailyAllowance > 0 ? 'var(--scch-green)' : 'hsl(var(--muted-foreground))' }}>
-                {formatCurrency(dailyAllowance)}
-              </span>
+
+              {/* Meal checkboxes — only for full rate trips (> 12h) */}
+              {tripHours >= 12 && (
+                <div className="pt-2 border-t" style={{ borderColor: 'rgba(0,255,65,0.15)' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                    Were you invited to a meal? <span style={{ color: 'var(--scch-gray)', fontWeight: 400 }}>(reduces allowance by 1/3 each)</span>
+                  </p>
+                  <div className="flex gap-6">
+                    {([
+                      ['Breakfast', mealBreakfast, setMealBreakfast],
+                      ['Lunch', mealLunch, setMealLunch],
+                      ['Dinner', mealDinner, setMealDinner],
+                    ] as [string, boolean, (v: boolean) => void][]).map(([label, checked, setter]) => (
+                      <label key={label} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={checked} onChange={e => setter(e.target.checked)} />
+                        {label}
+                        <span className="text-xs" style={{ color: 'var(--scch-gray)' }}>
+                          −{formatCurrency(daRate / 3)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {(mealBreakfast || mealLunch || mealDinner) && (
+                    <p className="text-xs mt-2" style={{ color: 'var(--scch-gray)' }}>
+                      Adjusted allowance: <strong style={{ color: 'var(--scch-green)' }}>{formatCurrency(dailyAllowance)}</strong>
+                      {dailyAllowance === 0 && ' (fully offset by meal invitations)'}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </Section>
 
-        {/* ── SECTION 2: Car Route (optional) ── */}
-        <div
-          className="rounded-xl overflow-hidden"
-          style={{
-            border: `1px solid ${carEnabled ? 'rgba(0,255,65,0.25)' : 'hsl(var(--border))'}`,
-            background: 'hsl(var(--card))',
-          }}
-        >
+        {/* ─── SECTION 2: Car Trip (optional toggle) ─── */}
+        <div className="rounded-xl overflow-hidden"
+          style={{ border: `1px solid ${carEnabled ? 'rgba(0,255,65,0.25)' : 'hsl(var(--border))'}`, background: 'hsl(var(--card))' }}>
+
           {/* Toggle header */}
-          <button
-            onClick={() => setCarEnabled(v => !v)}
-            className="w-full flex items-center justify-between p-6 text-left"
-          >
+          <button onClick={() => setCarEnabled(v => !v)}
+            className="w-full flex items-center justify-between p-6 text-left">
             <div className="flex items-center gap-3">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                style={{
-                  background: carEnabled ? 'rgba(0,255,65,0.1)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${carEnabled ? 'rgba(0,255,65,0.2)' : 'hsl(var(--border))'}`,
-                }}
-              >
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: carEnabled ? 'rgba(0,255,65,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${carEnabled ? 'rgba(0,255,65,0.2)' : 'hsl(var(--border))'}` }}>
                 <Car size={18} style={{ color: carEnabled ? 'var(--scch-green)' : 'hsl(var(--muted-foreground))' }} />
               </div>
               <div>
                 <p className="font-bold text-sm">Car Trip</p>
-                <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>
-                  Optional — {carEnabled ? 'enabled' : 'enable if you travelled by private car'}
-                </p>
+                <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>Optional — {carEnabled ? 'enabled' : 'enable if you travelled by private car'}</p>
               </div>
             </div>
-            {/* Toggle pill */}
-            <div
-              className="w-11 h-6 rounded-full relative transition-colors shrink-0"
-              style={{ background: carEnabled ? 'var(--scch-green)' : 'hsl(var(--muted))' }}
-            >
-              <div
-                className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
-                style={{
-                  background: carEnabled ? '#0d1b2a' : 'hsl(var(--muted-foreground))',
-                  left: carEnabled ? '22px' : '2px',
-                }}
-              />
+            <div className="w-11 h-6 rounded-full relative transition-colors shrink-0"
+              style={{ background: carEnabled ? 'var(--scch-green)' : 'hsl(var(--muted))' }}>
+              <div className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+                style={{ background: carEnabled ? '#0d1b2a' : 'hsl(var(--muted-foreground))', left: carEnabled ? '22px' : '2px' }} />
             </div>
           </button>
 
-          {/* Car route content */}
           {carEnabled && (
             <div className="px-6 pb-6 space-y-4 border-t" style={{ borderColor: 'hsl(var(--border))' }}>
-              <div className="pt-4 grid grid-cols-1 gap-3">
-                <Field label="Origin" hint={`Default: ${DEFAULT_LOCATION}`}>
+              <div className="pt-4 space-y-3">
+
+                {/* Origin */}
+                <Field label="Origin">
                   <div className="relative">
                     <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--scch-gray)' }} />
                     <input className="scch-input w-full pl-9 pr-3 py-2 text-sm" value={origin}
                       onChange={e => setOrigin(e.target.value)} />
                   </div>
                 </Field>
-                <Field label="Destination">
+
+                {/* Waypoints */}
+                {waypoints.map((wp, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#60aaff' }} />
+                      <input
+                        className="scch-input w-full pl-9 pr-3 py-2 text-sm"
+                        placeholder={`Waypoint ${i + 1}`}
+                        value={wp}
+                        onChange={e => updateWaypoint(i, e.target.value)}
+                      />
+                    </div>
+                    <button onClick={() => removeWaypoint(i)} className="p-2 scch-btn-ghost rounded shrink-0">
+                      <X size={13} style={{ color: '#ff5a5a' }} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Destination */}
+                <Field label="Destination" hint="Leave empty to return to origin only">
                   <div className="relative">
                     <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--scch-green)' }} />
                     <input className="scch-input w-full pl-9 pr-3 py-2 text-sm" value={routeDest}
-                      onChange={e => setRouteDest(e.target.value)} placeholder="e.g. Vienna Hauptbahnhof" />
+                      onChange={e => setRouteDest(e.target.value)}
+                      placeholder="e.g. Vienna Hauptbahnhof" />
                   </div>
                 </Field>
+
+                <button onClick={addWaypoint}
+                  className="scch-btn-ghost px-3 py-1.5 text-xs flex items-center gap-1.5">
+                  <Plus size={12} /> Add waypoint
+                </button>
               </div>
 
-              {/* Return trip toggle */}
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={returnTrip} onChange={e => setReturnTrip(e.target.checked)} />
                 <RotateCcw size={13} style={{ color: 'var(--scch-gray)' }} />
                 Include return trip (km × 2)
               </label>
 
-              {/* Action buttons */}
               <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={handleCalculateRoute}
-                  disabled={routeLoading || !origin || !routeDest}
-                  className="scch-btn-primary px-4 py-2 text-sm flex items-center gap-2"
-                >
+                <button onClick={handleCalculateRoute}
+                  disabled={routeLoading || !routeDest}
+                  className="scch-btn-primary px-4 py-2 text-sm flex items-center gap-2">
                   {routeLoading
                     ? <><Loader2 size={14} className="animate-spin" /> Calculating...</>
                     : <><Car size={14} /> Calculate Route</>}
                 </button>
-                <button
-                  onClick={handleNavigate}
-                  className="scch-btn-ghost px-4 py-2 text-sm flex items-center gap-2"
-                >
+                <button onClick={handleNavigate} disabled={!routeDest}
+                  className="scch-btn-ghost px-4 py-2 text-sm flex items-center gap-2">
                   <Navigation size={14} /> Open in Maps
                 </button>
               </div>
 
               {/* Route result */}
               {routeResult && !noApiKey && (
-                <div
-                  className="p-4 rounded-lg space-y-2"
-                  style={{ background: 'rgba(0,255,65,0.06)', border: '1px solid rgba(0,255,65,0.2)' }}
-                >
+                <div className="p-4 rounded-lg space-y-2"
+                  style={{ background: 'rgba(0,255,65,0.06)', border: '1px solid rgba(0,255,65,0.2)' }}>
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div>
                       <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>One way</p>
-                      <p className="font-bold" style={{ color: 'var(--scch-green)' }}>
-                        {routeResult.distance_km} km
-                      </p>
+                      <p className="font-bold" style={{ color: 'var(--scch-green)' }}>{routeResult.distance_km} km</p>
                     </div>
                     <div>
                       <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>Total km</p>
@@ -509,18 +548,16 @@ export default function SubmitPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center pt-1 border-t" style={{ borderColor: 'rgba(0,255,65,0.15)' }}>
+                  <div className="flex justify-between items-center pt-2 border-t" style={{ borderColor: 'rgba(0,255,65,0.15)' }}>
                     <span className="text-xs" style={{ color: 'var(--scch-gray)' }}>
-                      Mileage allowance @ {kmRate.toFixed(2)}€/km
+                      Mileage @ {kmRate.toFixed(2)}€/km
                     </span>
-                    <span className="font-bold" style={{ color: 'var(--scch-green)' }}>
-                      {formatCurrency(mileageCost)}
-                    </span>
+                    <span className="font-bold" style={{ color: 'var(--scch-green)' }}>{formatCurrency(mileageCost)}</span>
                   </div>
                 </div>
               )}
 
-              {/* Manual fallback */}
+              {/* Manual km fallback */}
               {(noApiKey || routeError) && (
                 <div className="space-y-3">
                   {routeError && (
@@ -528,7 +565,7 @@ export default function SubmitPage() {
                       {routeError}
                     </p>
                   )}
-                  <Field label="Total kilometres (manual input)" hint="Enter total km including return trip if applicable">
+                  <Field label="Total kilometres (manual)" hint="Enter total km including return trip if applicable">
                     <input type="number" min="0" step="0.1" className="scch-input w-full px-3 py-2 text-sm"
                       value={manualKm} onChange={e => setManualKm(e.target.value)} placeholder="e.g. 240" />
                   </Field>
@@ -545,31 +582,22 @@ export default function SubmitPage() {
           )}
         </div>
 
-        {/* ── SECTION 3: Receipts (optional) ── */}
-        <div
-          className="rounded-xl overflow-hidden"
-          style={{ border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
-        >
+        {/* ─── SECTION 3: Receipts (optional) ─── */}
+        <div className="rounded-xl overflow-hidden"
+          style={{ border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}>
           <div className="p-6">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center"
-                  style={{ background: 'rgba(0,255,65,0.1)', border: '1px solid rgba(0,255,65,0.2)' }}
-                >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center"
+                  style={{ background: 'rgba(0,255,65,0.1)', border: '1px solid rgba(0,255,65,0.2)' }}>
                   <Receipt size={18} style={{ color: 'var(--scch-green)' }} />
                 </div>
                 <div>
                   <p className="font-bold text-sm">Receipts</p>
-                  <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>
-                    Optional — hotel, transport, other expenses with receipts
-                  </p>
+                  <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>Optional — hotel, transport and other expenses</p>
                 </div>
               </div>
-              <button
-                onClick={addReceipt}
-                className="scch-btn-ghost px-3 py-1.5 text-xs flex items-center gap-1.5"
-              >
+              <button onClick={addReceipt} className="scch-btn-ghost px-3 py-1.5 text-xs flex items-center gap-1.5">
                 <Plus size={13} /> Add Receipt
               </button>
             </div>
@@ -577,51 +605,37 @@ export default function SubmitPage() {
             {receipts.length === 0 ? (
               <div className="text-center py-6" style={{ color: 'hsl(var(--muted-foreground))' }}>
                 <p className="text-sm">No receipts added.</p>
-                <p className="text-xs mt-1" style={{ color: 'var(--scch-gray)' }}>Click “Add Receipt“ to attach hotel or transport bills.</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--scch-gray)' }}>Click “Add Receipt” to attach hotel or transport bills.</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {receipts.map(r => (
-                  <div
-                    key={r._id}
-                    className="p-4 rounded-lg space-y-3"
-                    style={{ background: 'hsl(var(--muted))', border: '1px solid hsl(var(--border))' }}
-                  >
+                  <div key={r._id} className="p-4 rounded-lg space-y-3"
+                    style={{ background: 'hsl(var(--muted))', border: '1px solid hsl(var(--border))' }}>
                     <div className="grid grid-cols-1 sm:grid-cols-[1.5fr_2fr_1fr] gap-3 items-end">
                       <div>
                         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--scch-gray)' }}>Category</label>
-                        <select
-                          className="scch-input w-full px-2 py-1.5 text-sm"
-                          value={r.category}
-                          onChange={e => updateReceipt(r._id, { category: e.target.value as ReceiptCategory })}
-                        >
+                        <select className="scch-input w-full px-2 py-1.5 text-sm" value={r.category}
+                          onChange={e => updateReceipt(r._id, { category: e.target.value as ReceiptCategory })}>
                           {RECEIPT_CATS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--scch-gray)' }}>Description</label>
-                        <input
-                          className="scch-input w-full px-2 py-1.5 text-sm"
-                          placeholder="Hotel Vienna, 1 night"
-                          value={r.description}
-                          onChange={e => updateReceipt(r._id, { description: e.target.value })}
-                        />
+                        <input className="scch-input w-full px-2 py-1.5 text-sm" placeholder="Hotel Vienna, 1 night"
+                          value={r.description} onChange={e => updateReceipt(r._id, { description: e.target.value })} />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--scch-gray)' }}>Amount (€)</label>
-                        <input
-                          type="number" min="0" step="0.01"
-                          className="scch-input w-full px-2 py-1.5 text-sm"
-                          placeholder="0.00"
-                          value={r.amount}
-                          onChange={e => updateReceipt(r._id, { amount: e.target.value })}
-                        />
+                        <input type="number" min="0" step="0.01" className="scch-input w-full px-2 py-1.5 text-sm"
+                          placeholder="0.00" value={r.amount}
+                          onChange={e => updateReceipt(r._id, { amount: e.target.value })} />
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <label className="flex items-center gap-2 cursor-pointer text-xs scch-btn-ghost px-3 py-1.5 rounded">
                         <Upload size={12} />
-                        {r.file ? r.file.name : 'Upload receipt (PDF/JPG)'}
+                        {r.file ? r.file.name : 'Upload receipt (PDF / JPG)'}
                         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
                           onChange={e => updateReceipt(r._id, { file: e.target.files?.[0] ?? null })} />
                       </label>
@@ -636,11 +650,9 @@ export default function SubmitPage() {
           </div>
         </div>
 
-        {/* ── Grand Total & Submit ── */}
-        <div
-          className="rounded-xl p-6 space-y-4"
-          style={{ background: 'hsl(var(--card))', border: '1px solid rgba(0,255,65,0.2)' }}
-        >
+        {/* ─── Summary & Submit ─── */}
+        <div className="rounded-xl p-6 space-y-4"
+          style={{ background: 'hsl(var(--card))', border: '1px solid rgba(0,255,65,0.2)' }}>
           <h2 className="text-base font-bold" style={{ textTransform: 'none' }}>Summary</h2>
 
           <div className="space-y-2 text-sm">
@@ -658,26 +670,22 @@ export default function SubmitPage() {
             )}
             {receiptTotal > 0 && (
               <div className="flex justify-between">
-                <span style={{ color: 'var(--scch-gray)' }}>Receipts ({receipts.length} items)</span>
+                <span style={{ color: 'var(--scch-gray)' }}>Receipts ({receipts.length})</span>
                 <span className="font-semibold">{formatCurrency(receiptTotal)}</span>
               </div>
             )}
-            <div
-              className="flex justify-between font-bold text-base pt-2 border-t"
-              style={{ borderColor: 'rgba(0,255,65,0.2)' }}
-            >
+            <div className="flex justify-between font-bold text-base pt-2 border-t" style={{ borderColor: 'rgba(0,255,65,0.2)' }}>
               <span>Total</span>
               <span style={{ color: 'var(--scch-green)' }}>{formatCurrency(grandTotal)}</span>
             </div>
           </div>
 
-          {/* FFG notice */}
           <div className="p-3 rounded text-xs flex gap-2"
             style={{ background: 'rgba(0,255,65,0.05)', border: '1px solid rgba(0,255,65,0.15)' }}>
             <Info size={12} style={{ color: 'var(--scch-green)', flexShrink: 0, marginTop: 1 }} />
             <span style={{ color: 'var(--scch-gray)' }}>
-              All amounts subject to <strong style={{ color: 'hsl(var(--foreground))' }}>FFG eligibility rules</strong> and
-              § 26 EStG. Attach receipts for all accommodation and transport costs.
+              All amounts subject to <strong style={{ color: 'hsl(var(--foreground))' }}>FFG eligibility rules</strong> and § 26 EStG.
+              Attach receipts for all accommodation and transport costs.
             </span>
           </div>
 
@@ -690,10 +698,9 @@ export default function SubmitPage() {
               ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Submitting...</span>
               : 'Submit for Approval'}
           </button>
-
           {!canSubmit && (
             <p className="text-xs text-center" style={{ color: 'var(--scch-gray)' }}>
-              Fill in all required fields (marked with <span style={{ color: 'var(--scch-green)' }}>*</span>) to submit.
+              First name, last name, project, purpose, departure and return are required.
             </p>
           )}
         </div>

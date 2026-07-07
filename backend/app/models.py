@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import (
     String, Text, Boolean, Numeric, Date, Integer,
-    ForeignKey, CheckConstraint, Index, func, DateTime
+    ForeignKey, CheckConstraint, Index, DateTime, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -27,6 +27,7 @@ class Project(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     requests: Mapped[list["TravelRequest"]] = relationship(back_populates="project")
+    work_packages: Mapped[list["WorkPackage"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("funder IN ('FFG','FWF','CDG','OTHER')", name="ck_project_funder"),
@@ -34,20 +35,46 @@ class Project(Base):
     )
 
 
+class WorkPackage(Base):
+    __tablename__ = "work_packages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+
+    project: Mapped["Project"] = relationship(back_populates="work_packages")
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "code", name="uq_wp_project_code"),
+        Index("ix_wp_project_id", "project_id"),
+        Index("ix_wp_deleted_at", "deleted_at"),
+    )
+
+
 class TravelRequest(Base):
     __tablename__ = "travel_requests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    employee_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    employee_email: Mapped[str] = mapped_column(String(200), nullable=False)
-    department: Mapped[str] = mapped_column(String(200), nullable=False)
-    destination: Mapped[str] = mapped_column(String(300), nullable=False)
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    employee_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")  # kept for compat
+    employee_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    department: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    destination: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     purpose: Mapped[str] = mapped_column(String(500), nullable=False)
     work_package: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     trip_start: Mapped[datetime] = mapped_column(Date, nullable=False)
     trip_end: Mapped[datetime] = mapped_column(Date, nullable=False)
     departure_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     return_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    meal_breakfast: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    meal_lunch: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    meal_dinner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="RESTRICT"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -75,6 +102,7 @@ class RouteLeg(Base):
     leg_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     origin: Mapped[str] = mapped_column(String(400), nullable=False)
     destination: Mapped[str] = mapped_column(String(400), nullable=False)
+    waypoints: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array of strings
     distance_km: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     return_trip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

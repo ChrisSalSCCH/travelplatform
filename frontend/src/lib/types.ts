@@ -13,12 +13,23 @@ export interface Project {
   updated_at: string;
 }
 
+export interface WorkPackage {
+  id: string;
+  project_id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RouteLeg {
   id: string;
   request_id: string;
   leg_order: number;
   origin: string;
   destination: string;
+  waypoints: string | null;
   distance_km: number | null;
   duration_min: number | null;
   return_trip: boolean;
@@ -40,16 +51,21 @@ export interface ExpenseItem {
 
 export interface TravelRequest {
   id: string;
+  first_name: string;
+  last_name: string;
   employee_name: string;
-  employee_email: string;
-  department: string;
-  destination: string;
+  employee_email: string | null;
+  department: string | null;
+  destination: string | null;
   purpose: string;
   work_package: string | null;
   trip_start: string;
   trip_end: string;
   departure_time: string | null;
   return_time: string | null;
+  meal_breakfast: boolean;
+  meal_lunch: boolean;
+  meal_dinner: boolean;
   project_id: string;
   status: RequestStatus;
   rejection_reason: string | null;
@@ -70,7 +86,6 @@ export interface DailyRate {
   updated_at: string;
 }
 
-// Local draft receipt (before upload)
 export interface ReceiptDraft {
   _id: string;
   category: ReceiptCategory;
