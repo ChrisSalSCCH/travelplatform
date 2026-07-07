@@ -1,11 +1,7 @@
 export type Funder = 'FFG' | 'FWF' | 'CDG' | 'OTHER';
 export type RequestStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
-export type ExpenseCategory =
-  | 'daily_allowance'
-  | 'mileage'
-  | 'accommodation'
-  | 'transport'
-  | 'other';
+export type ExpenseCategory = 'daily_allowance' | 'mileage' | 'accommodation' | 'transport' | 'other';
+export type ReceiptCategory = 'accommodation' | 'transport' | 'other';
 
 export interface Project {
   id: string;
@@ -15,6 +11,18 @@ export interface Project {
   active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface RouteLeg {
+  id: string;
+  request_id: string;
+  leg_order: number;
+  origin: string;
+  destination: string;
+  distance_km: number | null;
+  duration_min: number | null;
+  return_trip: boolean;
+  created_at: string;
 }
 
 export interface ExpenseItem {
@@ -37,14 +45,18 @@ export interface TravelRequest {
   department: string;
   destination: string;
   purpose: string;
+  work_package: string | null;
   trip_start: string;
   trip_end: string;
+  departure_time: string | null;
+  return_time: string | null;
   project_id: string;
   status: RequestStatus;
   rejection_reason: string | null;
   created_at: string;
   updated_at: string;
   items: ExpenseItem[];
+  route_legs: RouteLeg[];
   project: Project | null;
 }
 
@@ -58,14 +70,12 @@ export interface DailyRate {
   updated_at: string;
 }
 
-// Form types (not persisted)
-export interface ExpenseItemDraft {
-  _id: string; // local only
-  category: ExpenseCategory;
-  date: string;
+// Local draft receipt (before upload)
+export interface ReceiptDraft {
+  _id: string;
+  category: ReceiptCategory;
   description: string;
-  km: string;
   amount: string;
-  receipt_file?: File | null;
-  receipt_url?: string | null;
+  file: File | null;
+  receipt_url: string | null;
 }

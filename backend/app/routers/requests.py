@@ -4,10 +4,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
-from app.models import TravelRequest, ExpenseItem, DailyRate
+from app.models import TravelRequest, ExpenseItem, DailyRate, RouteLeg
 from app.schemas import (
     TravelRequestCreate, TravelRequestUpdate, TravelRequestResponse,
     ExpenseItemCreate, ExpenseItemUpdate, ExpenseItemResponse,
+    RouteLegCreate, RouteLegResponse,
     RejectBody,
 )
 import uuid
@@ -15,10 +16,14 @@ import uuid
 router = APIRouter(prefix="/requests", tags=["requests"])
 
 
-def _get_request(request_id: str, db: Session) -> TravelRequest:
+def _load_request(request_id: str, db: Session) -> TravelRequest:
     req = (
         db.query(TravelRequest)
-        .options(joinedload(TravelRequest.items), joinedload(TravelRequest.project))
+        .options(
+            joinedload(TravelRequest.items),
+            joinedload(TravelRequest.project),
+            joinedload(TravelRequest.route_legs),
+        )
         .filter(TravelRequest.id == request_id, TravelRequest.deleted_at.is_(None))
         .first()
     )
@@ -36,7 +41,11 @@ def list_requests(
 ):
     q = (
         db.query(TravelRequest)
-        .options(joinedload(TravelRequest.items), joinedload(TravelRequest.project))
+        .options(
+            joinedload(TravelRequest.items),
+            joinedload(TravelRequest.project),
+            joinedload(TravelRequest.route_legs),
+        )
         .filter(TravelRequest.deleted_at.is_(None))
     )
     if status:
@@ -54,61 +63,91 @@ def list_requests(
 
 @router.post("", response_model=TravelRequestResponse, status_code=201)
 def create_request(body: TravelRequestCreate, db: Session = Depends(get_db)):
-    req = TravelRequest(id=str(uuid.uuid4()), status="draft", **body.model_dump())
+    data = body.model_dump()
+    req = TravelRequest(id=str(uuid.uuid4()), status="draft", **data)
     db.add(req)
     db.commit()
-    return _get_request(req.id, db)
+    return _load_request(req.id, db)
 
 
 @router.get("/{request_id}", response_model=TravelRequestResponse)
 def get_request(request_id: str, db: Session = Depends(get_db)):
-    return _get_request(request_id, db)
+    return _load_request(request_id, db)
 
 
 @router.patch("/{request_id}", response_model=TravelRequestResponse)
 def update_request(request_id: str, body: TravelRequestUpdate, db: Session = Depends(get_db)):
-    req = _get_request(request_id, db)
+    req = _load_request(request_id, db)
     if req.status != "draft":
         raise HTTPException(400, "Only draft requests can be edited")
     for key, val in body.model_dump(exclude_unset=True).items():
         setattr(req, key, val)
     req.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return _get_request(request_id, db)
+    return _load_request(request_id, db)
 
 
 @router.post("/{request_id}/submit", response_model=TravelRequestResponse)
 def submit_request(request_id: str, db: Session = Depends(get_db)):
-    req = _get_request(request_id, db)
+    req = _load_request(request_id, db)
     if req.status != "draft":
         raise HTTPException(400, "Only draft requests can be submitted")
     req.status = "submitted"
     req.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return _get_request(request_id, db)
+    return _load_request(request_id, db)
 
 
 @router.post("/{request_id}/approve", response_model=TravelRequestResponse)
 def approve_request(request_id: str, db: Session = Depends(get_db)):
-    req = _get_request(request_id, db)
+    req = _load_request(request_id, db)
     if req.status != "submitted":
         raise HTTPException(400, "Only submitted requests can be approved")
     req.status = "approved"
     req.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return _get_request(request_id, db)
+    return _load_request(request_id, db)
 
 
 @router.post("/{request_id}/reject", response_model=TravelRequestResponse)
 def reject_request(request_id: str, body: RejectBody, db: Session = Depends(get_db)):
-    req = _get_request(request_id, db)
+    req = _load_request(request_id, db)
     if req.status != "submitted":
         raise HTTPException(400, "Only submitted requests can be rejected")
     req.status = "rejected"
     req.rejection_reason = body.reason
     req.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return _get_request(request_id, db)
+    return _load_request(request_id, db)
+
+
+# ── Route Legs ───────────────────────────────────────────────────────────────
+
+@router.post("/{request_id}/route", response_model=list[RouteLegResponse], status_code=201)
+def save_route_legs(request_id: str, legs: list[RouteLegCreate], db: Session = Depends(get_db)):
+    """Replace all route legs for a request (used on submit)."""
+    req = _load_request(request_id, db)
+    # Delete existing legs
+    db.query(RouteLeg).filter(RouteLeg.request_id == request_id).delete()
+    new_legs = []
+    for i, leg in enumerate(legs):
+        rl = RouteLeg(
+            id=str(uuid.uuid4()),
+            request_id=request_id,
+            leg_order=leg.leg_order if leg.leg_order else i,
+            origin=leg.origin,
+            destination=leg.destination,
+            distance_km=leg.distance_km,
+            duration_min=leg.duration_min,
+            return_trip=leg.return_trip,
+        )
+        db.add(rl)
+        new_legs.append(rl)
+    req.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    for leg in new_legs:
+        db.refresh(leg)
+    return new_legs
 
 
 # ── Expense Items ─────────────────────────────────────────────────────────────
@@ -117,7 +156,6 @@ items_router = APIRouter(prefix="/items", tags=["items"])
 
 
 def _calc_amount(category: str, km: Optional[Decimal], amount: Decimal, db: Session) -> Decimal:
-    """Auto-calculate amount for mileage from current rate."""
     if category == "mileage" and km is not None:
         rate = db.query(DailyRate).filter(DailyRate.key == "mileage_car").first()
         if rate:
@@ -127,7 +165,7 @@ def _calc_amount(category: str, km: Optional[Decimal], amount: Decimal, db: Sess
 
 @router.post("/{request_id}/items", response_model=ExpenseItemResponse, status_code=201)
 def add_item(request_id: str, body: ExpenseItemCreate, db: Session = Depends(get_db)):
-    req = _get_request(request_id, db)
+    req = _load_request(request_id, db)
     if req.status not in ("draft",):
         raise HTTPException(400, "Items can only be added to draft requests")
     computed_amount = _calc_amount(body.category, body.km, body.amount, db)

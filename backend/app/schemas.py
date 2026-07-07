@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
@@ -43,6 +43,50 @@ class ProjectResponse(BaseModel):
     active: bool
     created_at: datetime
     updated_at: datetime
+
+
+# ── Route Legs ─────────────────────────────────────────────────────────────────
+
+class RouteLegCreate(BaseModel):
+    origin: str
+    destination: str
+    distance_km: Optional[Decimal] = None
+    duration_min: Optional[int] = None
+    return_trip: bool = False
+    leg_order: int = 0
+
+    @field_validator("origin", "destination")
+    @classmethod
+    def max_400(cls, v: str) -> str:
+        if len(v) > 400:
+            raise ValueError("max 400 characters")
+        return v
+
+
+class RouteLegResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    request_id: str
+    leg_order: int
+    origin: str
+    destination: str
+    distance_km: Optional[Decimal]
+    duration_min: Optional[int]
+    return_trip: bool
+    created_at: datetime
+
+
+# ── Route Calculate Request/Response ─────────────────────────────────────────────
+
+class RouteCalculateRequest(BaseModel):
+    origin: str
+    destination: str
+
+
+class RouteCalculateResponse(BaseModel):
+    distance_km: Optional[float] = None
+    duration_min: Optional[int] = None
+    error: Optional[str] = None
 
 
 # ── Expense Items ─────────────────────────────────────────────────────────────
@@ -102,8 +146,11 @@ class TravelRequestCreate(BaseModel):
     department: str
     destination: str
     purpose: str
+    work_package: Optional[str] = None
     trip_start: date
     trip_end: date
+    departure_time: Optional[datetime] = None
+    return_time: Optional[datetime] = None
     project_id: str
 
     @field_validator("employee_name", "department", "destination")
@@ -127,8 +174,11 @@ class TravelRequestUpdate(BaseModel):
     department: Optional[str] = None
     destination: Optional[str] = None
     purpose: Optional[str] = None
+    work_package: Optional[str] = None
     trip_start: Optional[date] = None
     trip_end: Optional[date] = None
+    departure_time: Optional[datetime] = None
+    return_time: Optional[datetime] = None
     project_id: Optional[str] = None
 
 
@@ -140,14 +190,18 @@ class TravelRequestResponse(BaseModel):
     department: str
     destination: str
     purpose: str
+    work_package: Optional[str]
     trip_start: date
     trip_end: date
+    departure_time: Optional[datetime]
+    return_time: Optional[datetime]
     project_id: str
     status: str
     rejection_reason: Optional[str]
     created_at: datetime
     updated_at: datetime
     items: list[ExpenseItemResponse] = []
+    route_legs: list[RouteLegResponse] = []
     project: Optional[ProjectResponse] = None
 
 
