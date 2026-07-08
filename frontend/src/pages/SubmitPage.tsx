@@ -372,7 +372,7 @@ export default function SubmitPage() {
   if (submittedId) {
     return (
       <Layout>
-        <div className="max-w-lg mx-auto px-4 py-24 text-center">
+        <div className="max-w-lg mx-auto px-4 sm:px-6 py-24 text-center">
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
             style={{ background: 'rgba(0,255,65,0.12)', border: '2px solid var(--scch-green)' }}>
             <CheckCircle2 size={40} style={{ color: 'var(--scch-green)' }} />
@@ -394,7 +394,7 @@ export default function SubmitPage() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-10 space-y-6">
         <div>
           <h1 className="text-4xl normal-case mb-1">travel expense</h1>
           <p style={{ color: 'var(--scch-gray)' }}>Complete the form below and submit for approval.</p>

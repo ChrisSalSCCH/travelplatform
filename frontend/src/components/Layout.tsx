@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className="sticky top-0 z-50 border-b border-border/50"
         style={{ background: 'hsl(var(--card))', backdropFilter: 'blur(10px)' }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
             <span

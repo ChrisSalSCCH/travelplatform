@@ -20,7 +20,7 @@ export default function AdminPage() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 py-10">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
           <h1 className="text-4xl normal-case mb-1">admin</h1>
           <p style={{ color: 'var(--scch-gray)' }}>Manage requests, projects and reimbursement rates.</p>
