@@ -5,8 +5,10 @@ import uuid
 
 
 RATE_SEEDS = [
-    {"key": "mileage_car", "label": "Mileage allowance (car)", "amount": Decimal("0.42"), "unit": "per km",
-     "notes": "§ 26 EStG — 0.42 €/km for private car, max. 30,000 km/year eligible for FFG funding"},
+    {"key": "mileage_car", "label": "Mileage allowance (car / driver)", "amount": Decimal("0.50"), "unit": "per km",
+     "notes": "§ 26 EStG — 0.50 €/km for private car driver, max. 30,000 km/year eligible for FFG funding"},
+    {"key": "mileage_passenger", "label": "Mileage allowance (passenger surcharge)", "amount": Decimal("0.15"), "unit": "per km per passenger",
+     "notes": "§ 26 EStG — additional 0.15 €/km per passenger carried"},
     {"key": "daily_allowance_domestic", "label": "Daily allowance (domestic)", "amount": Decimal("26.40"), "unit": "per day",
      "notes": "Full rate > 12h; half rate 3–12h. Reduced by 1/3 per invited meal (§ 26 EStG)"},
     {"key": "daily_allowance_abroad", "label": "Daily allowance (abroad)", "amount": Decimal("35.80"), "unit": "per day",
@@ -44,17 +46,21 @@ WP_SEEDS = {
 
 def seed_database(db: Session) -> None:
     for rate_data in RATE_SEEDS:
-        if not db.query(DailyRate).filter(DailyRate.key == rate_data["key"]).first():
+        existing = db.query(DailyRate).filter(DailyRate.key == rate_data["key"]).first()
+        if not existing:
             db.add(DailyRate(id=str(uuid.uuid4()), **rate_data))
+        else:
+            # Update amount in case it changed
+            existing.amount = rate_data["amount"]
+            existing.label = rate_data["label"]
+            existing.notes = rate_data["notes"]
 
     for proj_data in PROJECT_SEEDS:
         proj = db.query(Project).filter(Project.code == proj_data["code"]).first()
         if not proj:
             proj = Project(id=str(uuid.uuid4()), **proj_data)
             db.add(proj)
-            db.flush()  # get the id
-
-        # Seed work packages for this project
+            db.flush()
         for wp_data in WP_SEEDS.get(proj_data["code"], []):
             exists = db.query(WorkPackage).filter(
                 WorkPackage.project_id == proj.id,

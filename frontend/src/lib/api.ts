@@ -44,10 +44,21 @@ export const approveRequest = (id: string) =>
 export const rejectRequest = (id: string, reason: string) =>
   http.post<TravelRequest>(`/requests/${id}/reject`, { reason }).then(r => r.data);
 
+// Last odometer reading for a person
+export const getLastOdometer = (firstName: string, lastName: string) =>
+  http.get<{ odometer_end: number | null }>('/requests/last-odometer', {
+    params: { first_name: firstName, last_name: lastName },
+  }).then(r => r.data);
+
 // Route legs
 export const saveRouteLegs = (
   requestId: string,
-  legs: Array<{ origin: string; destination: string; waypoints?: string[]; distance_km?: number | null; duration_min?: number | null; return_trip: boolean; leg_order: number }>,
+  legs: Array<{
+    origin: string; destination: string; waypoints?: string[];
+    distance_km?: number | null; duration_min?: number | null;
+    return_trip: boolean; leg_order: number;
+    odometer_end?: number | null;
+  }>,
 ) => http.post(`/requests/${requestId}/route`, legs).then(r => r.data);
 
 // Passengers
@@ -86,4 +97,18 @@ export const uploadReceipt = async (file: File): Promise<string> => {
   form.append('file', file);
   const res = await http.post<{ url: string }>('/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
   return res.data.url;
+};
+
+// VLM receipt amount extraction
+export const extractReceiptAmount = async (file: File): Promise<number | null> => {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await http.post<{ amount: number | null; error?: string }>(
+      '/extract-amount', form, { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return res.data.amount ?? null;
+  } catch {
+    return null;
+  }
 };

@@ -124,6 +124,7 @@ class RouteLeg(Base):
     distance_km: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     return_trip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    odometer_end: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 1), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc, nullable=False)
     request: Mapped["TravelRequest"] = relationship(back_populates="route_legs")
     __table_args__ = (Index("ix_route_legs_request_id", "request_id"),)

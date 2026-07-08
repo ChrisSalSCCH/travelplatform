@@ -9,6 +9,7 @@ from app.migrate import run_migrations
 from app.routers import projects, requests, rates, upload
 from app.routers.requests import items_router
 from app.routers import route, workpackages
+from app.routers.extract import router as extract_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,13 +29,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(projects.router, prefix="/api")
-app.include_router(requests.router, prefix="/api")
-app.include_router(items_router, prefix="/api")
-app.include_router(rates.router, prefix="/api")
-app.include_router(upload.router, prefix="/api")
-app.include_router(route.router, prefix="/api")
+app.include_router(projects.router,    prefix="/api")
+app.include_router(requests.router,    prefix="/api")
+app.include_router(items_router,       prefix="/api")
+app.include_router(rates.router,       prefix="/api")
+app.include_router(upload.router,      prefix="/api")
+app.include_router(route.router,       prefix="/api")
 app.include_router(workpackages.router, prefix="/api")
+app.include_router(extract_router,     prefix="/api")
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "./uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

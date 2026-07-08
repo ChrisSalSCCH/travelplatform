@@ -17,7 +17,7 @@ export interface RouteLeg {
   id: string; request_id: string; leg_order: number;
   origin: string; destination: string; waypoints: string | null;
   distance_km: number | null; duration_min: number | null;
-  return_trip: boolean; created_at: string;
+  return_trip: boolean; odometer_end: number | null; created_at: string;
 }
 
 export interface CarPassenger {
@@ -63,24 +63,17 @@ export interface ReceiptDraft {
   _id: string; category: ReceiptCategory;
   description: string; amount: string;
   file: File | null; receipt_url: string | null;
+  extracting?: boolean;   // VLM in progress
+  autoDetected?: boolean; // amount was auto-filled
 }
 
-// Local draft for per-day allowance
 export interface AllowanceDayDraft {
-  date: string;        // ISO date string YYYY-MM-DD
-  label: string;       // e.g. "Mon, 07 Jul"
-  isFirstDay: boolean;
-  isLastDay: boolean;
-  hours: number;       // effective hours for this day
-  isAbroad: boolean;
-  mealBreakfast: boolean;
-  mealLunch: boolean;
-  mealDinner: boolean;
+  date: string; label: string;
+  isFirstDay: boolean; isLastDay: boolean;
+  hours: number; isAbroad: boolean;
+  mealBreakfast: boolean; mealLunch: boolean; mealDinner: boolean;
 }
 
-// Local draft for passengers
 export interface PassengerDraft {
-  _id: string;
-  name: string;
-  km: string;
+  _id: string; name: string; km: string;
 }
