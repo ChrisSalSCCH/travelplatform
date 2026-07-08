@@ -28,20 +28,13 @@ export const getRequests = (params?: { status?: string; project_id?: string; sea
 export const getRequest = (id: string) =>
   http.get<TravelRequest>(`/requests/${id}`).then(r => r.data);
 export const createRequest = (data: {
-  first_name: string;
-  last_name: string;
-  employee_email?: string | null;
-  department?: string | null;
-  destination?: string | null;
-  purpose: string;
+  first_name: string; last_name: string;
+  employee_email?: string | null; department?: string | null;
+  destination?: string | null; purpose: string;
   work_package?: string | null;
-  trip_start: string;
-  trip_end: string;
-  departure_time?: string | null;
-  return_time?: string | null;
-  meal_breakfast: boolean;
-  meal_lunch: boolean;
-  meal_dinner: boolean;
+  trip_start: string; trip_end: string;
+  departure_time?: string | null; return_time?: string | null;
+  meal_breakfast: boolean; meal_lunch: boolean; meal_dinner: boolean;
   project_id: string;
 }) => http.post<TravelRequest>('/requests', data).then(r => r.data);
 export const submitRequest = (id: string) =>
@@ -54,22 +47,25 @@ export const rejectRequest = (id: string, reason: string) =>
 // Route legs
 export const saveRouteLegs = (
   requestId: string,
-  legs: Array<{
-    origin: string;
-    destination: string;
-    waypoints?: string[];
-    distance_km?: number | null;
-    duration_min?: number | null;
-    return_trip: boolean;
-    leg_order: number;
-  }>,
+  legs: Array<{ origin: string; destination: string; waypoints?: string[]; distance_km?: number | null; duration_min?: number | null; return_trip: boolean; leg_order: number }>,
 ) => http.post(`/requests/${requestId}/route`, legs).then(r => r.data);
+
+// Passengers
+export const savePassengers = (
+  requestId: string,
+  passengers: Array<{ name: string; km: number }>,
+) => http.post(`/requests/${requestId}/passengers`, passengers).then(r => r.data);
+
+// Allowance days
+export const saveAllowanceDays = (
+  requestId: string,
+  days: Array<{ day: string; is_abroad: boolean; meal_breakfast: boolean; meal_lunch: boolean; meal_dinner: boolean; allowance_amount: number }>,
+) => http.post(`/requests/${requestId}/allowance-days`, days).then(r => r.data);
 
 // Route calculation
 export const calculateRoute = (origin: string, destination: string, waypoints?: string[]) =>
   http.post<{ distance_km?: number; duration_min?: number; error?: string }>(
-    '/route/calculate',
-    { origin, destination, waypoints: waypoints ?? [] },
+    '/route/calculate', { origin, destination, waypoints: waypoints ?? [] },
   ).then(r => r.data);
 
 // Items
