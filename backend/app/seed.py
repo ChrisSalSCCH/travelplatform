@@ -4,17 +4,18 @@ from app.models import DailyRate, Project, WorkPackage
 import uuid
 
 
+# Rates as of 2026 (BGBl. II Nr. 395/2025)
 RATE_SEEDS = [
     {"key": "mileage_car", "label": "Mileage allowance (car / driver)", "amount": Decimal("0.50"), "unit": "per km",
      "notes": "§ 26 EStG — 0.50 €/km for private car driver, max. 30,000 km/year eligible for FFG funding"},
     {"key": "mileage_passenger", "label": "Mileage allowance (passenger surcharge)", "amount": Decimal("0.15"), "unit": "per km per passenger",
      "notes": "§ 26 EStG — additional 0.15 €/km per passenger carried"},
-    {"key": "daily_allowance_domestic", "label": "Daily allowance (domestic)", "amount": Decimal("26.40"), "unit": "per day",
-     "notes": "Full rate > 12h; half rate 3–12h. Reduced by 1/3 per invited meal (§ 26 EStG)"},
-    {"key": "daily_allowance_abroad", "label": "Daily allowance (abroad)", "amount": Decimal("35.80"), "unit": "per day",
-     "notes": "Standard EU rate; country-specific rates apply per BMF table"},
-    {"key": "overnight_allowance", "label": "Overnight allowance (without receipt)", "amount": Decimal("15.00"), "unit": "per night",
-     "notes": "Flat rate; actual hotel receipt can be claimed instead"},
+    {"key": "daily_allowance_domestic", "label": "Daily allowance (domestic)", "amount": Decimal("30.00"), "unit": "per day",
+     "notes": "Ab 2026 (BGBl. II Nr. 395/2025): Voller Satz > 12h; halber Satz 3-12h. Kuerzung um je 1/3 pro eingeladener Mahlzeit (§ 26 EStG)"},
+    {"key": "daily_allowance_abroad", "label": "Daily allowance (abroad)", "amount": Decimal("41.40"), "unit": "per day",
+     "notes": "Ab 2026 (BGBl. II Nr. 395/2025): Standardsatz EU/Ausland; laenderspezifische Saetze gemaess BMF-Tabelle"},
+    {"key": "overnight_allowance", "label": "Overnight allowance (without receipt)", "amount": Decimal("17.00"), "unit": "per night",
+     "notes": "Ab 2026 (BGBl. II Nr. 395/2025): Pauschale ohne Beleg; tatsaechliche Hotelrechnung alternativ abrechenbar"},
     {"key": "mileage_bike", "label": "Mileage allowance (bicycle)", "amount": Decimal("0.38"), "unit": "per km",
      "notes": "§ 26 EStG — 0.38 €/km for bicycle"},
 ]
@@ -48,12 +49,8 @@ def seed_database(db: Session) -> None:
     for rate_data in RATE_SEEDS:
         existing = db.query(DailyRate).filter(DailyRate.key == rate_data["key"]).first()
         if not existing:
+            # Only insert if the rate does not exist yet — never overwrite user-edited values
             db.add(DailyRate(id=str(uuid.uuid4()), **rate_data))
-        else:
-            # Update amount in case it changed
-            existing.amount = rate_data["amount"]
-            existing.label = rate_data["label"]
-            existing.notes = rate_data["notes"]
 
     for proj_data in PROJECT_SEEDS:
         proj = db.query(Project).filter(Project.code == proj_data["code"]).first()
