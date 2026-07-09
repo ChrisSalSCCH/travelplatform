@@ -2,6 +2,17 @@ export type Funder = 'FFG' | 'FWF' | 'CDG' | 'OTHER';
 export type RequestStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 export type ExpenseCategory = 'daily_allowance' | 'mileage' | 'accommodation' | 'transport' | 'other';
 export type ReceiptCategory = 'accommodation' | 'transport' | 'other';
+export type UserRole = 'employee' | 'approver' | 'admin';
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  department: string | null;
+  role: UserRole;
+  is_demo: boolean;
+}
 
 export interface Project {
   id: string; code: string; name: string; funder: Funder;
@@ -54,6 +65,30 @@ export interface TravelRequest {
   project: Project | null;
 }
 
+export interface TravelPreRequest {
+  id: string;
+  user_id: string | null;
+  first_name: string;
+  last_name: string;
+  employee_email: string | null;
+  department: string | null;
+  project_id: string;
+  work_package: string | null;
+  destination: string;
+  purpose: string;
+  travel_start: string;
+  travel_end: string;
+  estimated_km: number | null;
+  estimated_nights: number | null;
+  estimated_other_costs: number | null;
+  notes: string | null;
+  status: 'submitted' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  project: Project | null;
+}
+
 export interface DailyRate {
   id: string; key: string; label: string;
   amount: number; unit: string; notes: string | null; updated_at: string;
@@ -63,8 +98,8 @@ export interface ReceiptDraft {
   _id: string; category: ReceiptCategory;
   description: string; amount: string;
   file: File | null; receipt_url: string | null;
-  extracting?: boolean;   // VLM in progress
-  autoDetected?: boolean; // amount was auto-filled
+  extracting?: boolean;
+  autoDetected?: boolean;
 }
 
 export interface AllowanceDayDraft {

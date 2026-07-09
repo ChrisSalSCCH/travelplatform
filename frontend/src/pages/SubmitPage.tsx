@@ -14,6 +14,7 @@ import {
 } from '../lib/api';
 import { formatCurrency } from '../lib/utils';
 import { calcDayAllowance, calcTripHours, formatDuration, generateAllowanceDays } from '../lib/allowance';
+import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
 import Combobox from '../components/Combobox';
 
@@ -130,10 +131,8 @@ function AllowanceDayCard({ day, domesticRate, abroadRate, onChange }: {
 }
 
 export default function SubmitPage() {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [department, setDepartment] = useState('');
+  const { user } = useAuth();
+
   const [projectId, setProjectId] = useState('');
   const [workPackage, setWorkPackage] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -170,10 +169,9 @@ export default function SubmitPage() {
   const rateMap = Object.fromEntries(rates.map((r: DailyRate) => [r.key, Number(r.amount)]));
   const kmRate = rateMap['mileage_car'] ?? 0.50;
   const passengerRate = rateMap['mileage_passenger'] ?? 0.15;
-  const domesticRate = rateMap['daily_allowance_domestic'] ?? 26.40;
-  const abroadRate = rateMap['daily_allowance_abroad'] ?? 35.80;
+  const domesticRate = rateMap['daily_allowance_domestic'] ?? 30.00;
+  const abroadRate = rateMap['daily_allowance_abroad'] ?? 41.40;
 
-  // Allowance days
   useEffect(() => { setAllowanceDays(generateAllowanceDays(departureTime, returnTime)); }, [departureTime, returnTime]);
   useEffect(() => {
     if (allowanceDays.length === 0) return;
@@ -200,7 +198,6 @@ export default function SubmitPage() {
   const tripStart = departureTime ? departureTime.split('T')[0] : '';
   const tripEnd = returnTime ? returnTime.split('T')[0] : tripStart;
 
-  // Auto-fill passenger km
   const autoKm = effectiveKm > 0 ? String(effectiveKm.toFixed(1)) : '';
   const addPassenger = () => setPassengers(prev => [...prev, { _id: genId(), name: '', km: autoKm }]);
   const updatePassenger = (id: string, patch: Partial<PassengerDraft>) =>
@@ -213,12 +210,11 @@ export default function SubmitPage() {
     ));
   }, [effectiveKm]);
 
-  // Secret odometer button
   const handleAutoOdometer = async () => {
-    if (!firstName || !lastName) { toast.error('Enter your name first'); return; }
+    if (!user) return;
     setOdometerLoading(true);
     try {
-      const res = await getLastOdometer(firstName, lastName);
+      const res = await getLastOdometer(user.first_name, user.last_name);
       if (res.odometer_end !== null) {
         setOdometerEnd(String(res.odometer_end));
         toast.success('Odometer pre-filled from last trip');
@@ -232,7 +228,6 @@ export default function SubmitPage() {
     }
   };
 
-  // Route calculation
   const handleCalculateRoute = useCallback(async () => {
     if (!routeDest) return;
     setRouteLoading(true); setRouteError(''); setRouteResult(null);
@@ -257,7 +252,6 @@ export default function SubmitPage() {
   const updateWaypoint = (i: number, v: string) => setWaypoints(prev => prev.map((w, idx) => idx === i ? v : w));
   const removeWaypoint = (i: number) => setWaypoints(prev => prev.filter((_, idx) => idx !== i));
 
-  // Receipts + VLM extraction
   const addReceipt = () => setReceipts(prev => [...prev, { _id: genId(), category: 'accommodation', description: '', amount: '', file: null, receipt_url: null }]);
   const updateReceipt = (id: string, patch: Partial<ReceiptDraft>) =>
     setReceipts(prev => prev.map(r => r._id === id ? { ...r, ...patch } : r));
@@ -274,7 +268,7 @@ export default function SubmitPage() {
     }
   };
 
-  const canSubmit = firstName && lastName && projectId && purpose && departureTime && returnTime;
+  const canSubmit = projectId && purpose && departureTime && returnTime;
 
   const projectOptions = projects.map(p => ({ value: p.id, label: `${p.code} — ${p.name}`, sub: p.funder }));
   const wpOptions = workPackages.map(wp => ({ value: `${wp.code} — ${wp.name}`, label: `${wp.code} — ${wp.name}` }));
@@ -282,12 +276,18 @@ export default function SubmitPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      const firstName = user?.first_name ?? 'Guest';
+      const lastName = user?.last_name ?? '';
       const req = await createRequest({
-        first_name: firstName, last_name: lastName,
-        employee_email: email || null, department: department || null,
-        destination: routeDest || null, purpose,
+        first_name: firstName,
+        last_name: lastName,
+        employee_email: user?.email ?? null,
+        department: user?.department ?? null,
+        destination: routeDest || null,
+        purpose,
         work_package: workPackage || null,
-        trip_start: tripStart, trip_end: tripEnd || tripStart,
+        trip_start: tripStart,
+        trip_end: tripEnd || tripStart,
         departure_time: departureTime ? new Date(departureTime).toISOString() : null,
         return_time: returnTime ? new Date(returnTime).toISOString() : null,
         meal_breakfast: allowanceDays.some(d => d.mealBreakfast),
@@ -321,13 +321,11 @@ export default function SubmitPage() {
           return_trip: returnTrip, leg_order: 0,
           odometer_end: odometerEnd ? Number(odometerEnd) : null,
         }]);
-        // Driver mileage item
         await addItem(req.id, {
           category: 'mileage', date: tripStart,
           description: `Car (driver): ${origin} →${waypoints.filter(Boolean).map(w => ` ${w} →`).join('')} ${routeDest}${returnTrip ? ' (return)' : ''}`,
           km: effectiveKm, amount: driverCost,
         });
-        // Passenger surcharge item
         const validPassengers = passengers.filter(p => p.name && Number(p.km) > 0);
         if (validPassengers.length > 0) {
           await savePassengers(req.id, validPassengers.map(p => ({ name: p.name, km: Number(p.km) })));
@@ -360,7 +358,6 @@ export default function SubmitPage() {
 
   const resetForm = () => {
     setSubmittedId(null);
-    setFirstName(''); setLastName(''); setEmail(''); setDepartment('');
     setProjectId(''); setWorkPackage(''); setPurpose('');
     setDepartureTime(''); setReturnTime('');
     setAllowanceDays([]); setAllAbroad(false);
@@ -372,7 +369,7 @@ export default function SubmitPage() {
   if (submittedId) {
     return (
       <Layout>
-        <div className="max-w-lg mx-auto px-4 sm:px-6 py-24 text-center">
+        <div className="max-w-lg mx-auto px-4 py-24 text-center">
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
             style={{ background: 'rgba(0,255,65,0.12)', border: '2px solid var(--scch-green)' }}>
             <CheckCircle2 size={40} style={{ color: 'var(--scch-green)' }} />
@@ -398,27 +395,18 @@ export default function SubmitPage() {
         <div>
           <h1 className="text-4xl normal-case mb-1">travel expense</h1>
           <p style={{ color: 'var(--scch-gray)' }}>Complete the form below and submit for approval.</p>
+          {user && (
+            <p className="mt-2 text-sm" style={{ color: 'hsl(var(--muted-foreground))' }}>
+              Submitting as{' '}
+              <strong style={{ color: 'hsl(var(--foreground))' }}>{user.first_name} {user.last_name}</strong>
+              {user.department && <> · {user.department}</>}
+            </p>
+          )}
         </div>
 
         {/* SECTION 1: Trip Details */}
         <Section icon={Info} title="Trip Details" subtitle="Required information about your business trip">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="First Name" required>
-              <input className="scch-input w-full px-3 py-2 text-sm" value={firstName}
-                onChange={e => setFirstName(e.target.value)} placeholder="Maria" />
-            </Field>
-            <Field label="Last Name" required>
-              <input className="scch-input w-full px-3 py-2 text-sm" value={lastName}
-                onChange={e => setLastName(e.target.value)} placeholder="Muster" />
-            </Field>
-            <Field label="Email">
-              <input type="email" className="scch-input w-full px-3 py-2 text-sm" value={email}
-                onChange={e => setEmail(e.target.value)} placeholder="optional" />
-            </Field>
-            <Field label="Department">
-              <input className="scch-input w-full px-3 py-2 text-sm" value={department}
-                onChange={e => setDepartment(e.target.value)} placeholder="optional" />
-            </Field>
             <Field label="Project" required className="sm:col-span-2">
               <Combobox options={projectOptions} value={projectId}
                 onChange={val => {
@@ -538,7 +526,6 @@ export default function SubmitPage() {
                 </button>
               </div>
 
-              {/* Route result */}
               {routeResult && !noApiKey && (
                 <div className="p-4 rounded-lg space-y-2"
                   style={{ background: 'rgba(0,255,65,0.06)', border: '1px solid rgba(0,255,65,0.2)' }}>
@@ -556,7 +543,6 @@ export default function SubmitPage() {
                       <p className="font-bold" style={{ color: 'var(--scch-green)' }}>{formatDuration(routeResult.duration_min * (returnTrip ? 2 : 1))}</p>
                     </div>
                   </div>
-                  {/* Mileage breakdown */}
                   <div className="space-y-1 pt-2 border-t text-sm" style={{ borderColor: 'rgba(0,255,65,0.15)' }}>
                     <div className="flex justify-between">
                       <span style={{ color: 'var(--scch-gray)' }}>Driver: {effectiveKm.toFixed(1)} km × {kmRate.toFixed(2)}€</span>
@@ -576,7 +562,6 @@ export default function SubmitPage() {
                 </div>
               )}
 
-              {/* Manual km */}
               {(noApiKey || routeError) && (
                 <div className="space-y-3">
                   {routeError && <p className="text-xs px-3 py-2 rounded" style={{ color: '#ff5a5a', background: 'rgba(255,90,90,0.08)', border: '1px solid rgba(255,90,90,0.2)' }}>{routeError}</p>}
@@ -606,14 +591,12 @@ export default function SubmitPage() {
                 </div>
               )}
 
-              {/* Odometer */}
               <div>
                 <div className="flex items-center gap-2 mb-1.5 group">
                   <Gauge size={13} style={{ color: 'var(--scch-gray)' }} />
                   <label className="text-xs font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>
                     Odometer reading at end of trip (km)
                   </label>
-                  {/* Secret button — visible only on hover */}
                   <button
                     onClick={handleAutoOdometer}
                     disabled={odometerLoading}
@@ -633,7 +616,6 @@ export default function SubmitPage() {
                 />
               </div>
 
-              {/* Passengers */}
               <div className="border-t pt-4 space-y-3" style={{ borderColor: 'hsl(var(--border))' }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -804,7 +786,7 @@ export default function SubmitPage() {
           </button>
           {!canSubmit && (
             <p className="text-xs text-center" style={{ color: 'var(--scch-gray)' }}>
-              First name, last name, project, purpose, departure and return are required.
+              Project, purpose, departure and return are required.
             </p>
           )}
         </div>

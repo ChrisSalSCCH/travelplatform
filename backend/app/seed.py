@@ -1,6 +1,9 @@
+import hashlib
+import hmac
+import secrets
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from app.models import DailyRate, Project, WorkPackage
+from app.models import DailyRate, Project, WorkPackage, User
 import uuid
 
 
@@ -45,13 +48,52 @@ WP_SEEDS = {
 }
 
 
+def _hash_password(plain: str) -> str:
+    """PBKDF2-HMAC-SHA256 — stdlib only, no passlib/bcrypt needed."""
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt.encode(), 260_000)
+    return f"pbkdf2:sha256:260000:{salt}:{dk.hex()}"
+
+
+USER_SEEDS = [
+    {
+        "email": "demo@scch.at",
+        "first_name": "Demo",
+        "last_name": "User",
+        "department": "Research",
+        "role": "employee",
+        "password_hash": None,
+        "is_demo": True,
+    },
+    {
+        "email": "admin@scch.at",
+        "first_name": "Admin",
+        "last_name": "SCCH",
+        "department": "Management",
+        "role": "admin",
+        "plain_password": "scch-admin",
+        "is_demo": False,
+    },
+    {
+        "email": "approver@scch.at",
+        "first_name": "Max",
+        "last_name": "Mustermann",
+        "department": "Management",
+        "role": "approver",
+        "plain_password": "scch-approver",
+        "is_demo": False,
+    },
+]
+
+
 def seed_database(db: Session) -> None:
+    # Rates — only insert, never overwrite user-edited values
     for rate_data in RATE_SEEDS:
         existing = db.query(DailyRate).filter(DailyRate.key == rate_data["key"]).first()
         if not existing:
-            # Only insert if the rate does not exist yet — never overwrite user-edited values
             db.add(DailyRate(id=str(uuid.uuid4()), **rate_data))
 
+    # Projects & work packages
     for proj_data in PROJECT_SEEDS:
         proj = db.query(Project).filter(Project.code == proj_data["code"]).first()
         if not proj:
@@ -65,5 +107,13 @@ def seed_database(db: Session) -> None:
             ).first()
             if not exists:
                 db.add(WorkPackage(id=str(uuid.uuid4()), project_id=proj.id, **wp_data))
+
+    # Seed users — only insert if email not yet present
+    for u in USER_SEEDS:
+        existing = db.query(User).filter(User.email == u["email"]).first()
+        if not existing:
+            plain_pw = u.pop("plain_password", None)
+            pw_hash = _hash_password(plain_pw) if plain_pw else u.pop("password_hash", None)
+            db.add(User(id=str(uuid.uuid4()), password_hash=pw_hash, **u))
 
     db.commit()

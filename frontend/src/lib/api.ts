@@ -1,8 +1,15 @@
 import axios from 'axios';
-import type { Project, TravelRequest, DailyRate, WorkPackage } from './types';
+import type { Project, TravelRequest, DailyRate, WorkPackage, TravelPreRequest } from './types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
-const http = axios.create({ baseURL: BASE });
+export const http = axios.create({ baseURL: BASE });
+
+// Attach token from localStorage to every request
+http.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('scch_token');
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
+});
 
 // Projects
 export const getProjects = (activeOnly = false) =>
@@ -22,7 +29,7 @@ export const updateWorkPackage = (id: string, data: Partial<WorkPackage>) =>
   http.patch<WorkPackage>(`/workpackages/${id}`, data).then(r => r.data);
 export const deleteWorkPackage = (id: string) => http.delete(`/workpackages/${id}`);
 
-// Requests
+// Expense Requests
 export const getRequests = (params?: { status?: string; project_id?: string; search?: string }) =>
   http.get<TravelRequest[]>('/requests', { params }).then(r => r.data);
 export const getRequest = (id: string) =>
@@ -112,3 +119,23 @@ export const extractReceiptAmount = async (file: File): Promise<number | null> =
     return null;
   }
 };
+
+// Travel Pre-Requests
+export const getPreRequests = (params?: { status?: string }) =>
+  http.get<TravelPreRequest[]>('/travel-requests', { params }).then(r => r.data);
+export const createPreRequest = (data: {
+  project_id: string;
+  work_package?: string | null;
+  destination: string;
+  purpose: string;
+  travel_start: string;
+  travel_end: string;
+  estimated_km?: number | null;
+  estimated_nights?: number | null;
+  estimated_other_costs?: number | null;
+  notes?: string | null;
+}) => http.post<TravelPreRequest>('/travel-requests', data).then(r => r.data);
+export const approvePreRequest = (id: string) =>
+  http.patch<TravelPreRequest>(`/travel-requests/${id}/approve`).then(r => r.data);
+export const rejectPreRequest = (id: string, reason: string) =>
+  http.patch<TravelPreRequest>(`/travel-requests/${id}/reject`, { reason }).then(r => r.data);

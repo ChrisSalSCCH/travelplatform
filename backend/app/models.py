@@ -14,6 +14,26 @@ def now_utc():
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    department: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="employee")
+    password_hash: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    __table_args__ = (
+        CheckConstraint("role IN ('employee','approver','admin')", name="ck_user_role"),
+        Index("ix_users_email", "email"),
+        Index("ix_users_deleted_at", "deleted_at"),
+    )
+
+
 class Project(Base):
     __tablename__ = "projects"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -25,6 +45,7 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     requests: Mapped[list["TravelRequest"]] = relationship(back_populates="project")
+    pre_requests: Mapped[list["TravelPreRequest"]] = relationship(back_populates="project")
     work_packages: Mapped[list["WorkPackage"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     __table_args__ = (
         CheckConstraint("funder IN ('FFG','FWF','CDG','OTHER')", name="ck_project_funder"),
@@ -84,6 +105,39 @@ class TravelRequest(Base):
         Index("ix_requests_status", "status"),
         Index("ix_requests_project_id", "project_id"),
         Index("ix_requests_deleted_at", "deleted_at"),
+    )
+
+
+class TravelPreRequest(Base):
+    """Pre-trip travel request — submitted before the trip for approval."""
+    __tablename__ = "travel_pre_requests"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    employee_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    department: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="RESTRICT"), nullable=False)
+    work_package: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    destination: Mapped[str] = mapped_column(String(300), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(500), nullable=False)
+    travel_start: Mapped[datetime] = mapped_column(Date, nullable=False)
+    travel_end: Mapped[datetime] = mapped_column(Date, nullable=False)
+    estimated_km: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    estimated_nights: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    estimated_other_costs: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="submitted")
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    project: Mapped["Project"] = relationship(back_populates="pre_requests")
+    __table_args__ = (
+        CheckConstraint("status IN ('submitted','approved','rejected')", name="ck_pre_request_status"),
+        Index("ix_pre_requests_status", "status"),
+        Index("ix_pre_requests_project_id", "project_id"),
+        Index("ix_pre_requests_deleted_at", "deleted_at"),
     )
 
 
