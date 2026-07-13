@@ -109,9 +109,10 @@ def seed_database(db: Session) -> None:
                 db.add(WorkPackage(id=str(uuid.uuid4()), project_id=proj.id, **wp_data))
 
     # Seed users — only insert if email not yet present
-    for u in USER_SEEDS:
-        existing = db.query(User).filter(User.email == u["email"]).first()
+    for u_orig in USER_SEEDS:
+        existing = db.query(User).filter(User.email == u_orig["email"]).first()
         if not existing:
+            u = dict(u_orig)  # copy to avoid mutating the global list
             plain_pw = u.pop("plain_password", None)
             pw_hash = _hash_password(plain_pw) if plain_pw else u.pop("password_hash", None)
             db.add(User(id=str(uuid.uuid4()), password_hash=pw_hash, **u))
