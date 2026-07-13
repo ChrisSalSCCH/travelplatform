@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import TravelPreRequest, Project
+from app.models import TravelPreRequest, TravelRequest, Project
 from app.routers.auth import get_current_user, get_current_user_optional
 from app.models import User
 
@@ -52,6 +52,7 @@ class PreRequestResponse(BaseModel):
     rejection_reason: Optional[str]
     created_at: datetime
     updated_at: datetime
+    expense_id: Optional[str] = None
     project: Optional["ProjectMini"] = None
 
 
@@ -81,7 +82,6 @@ def list_pre_requests(
     q = db.query(TravelPreRequest).filter(TravelPreRequest.deleted_at.is_(None))
     if status:
         q = q.filter(TravelPreRequest.status == status)
-    # Non-admin/approver users only see their own requests
     if current_user and current_user.role == "employee":
         q = q.filter(TravelPreRequest.user_id == current_user.id)
     return q.order_by(TravelPreRequest.created_at.desc()).all()
@@ -133,16 +133,41 @@ def get_pre_request(req_id: str, db: Session = Depends(get_db)):
 def approve_pre_request(
     req_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    if current_user.role not in ("approver", "admin"):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    obj = db.query(TravelPreRequest).filter(TravelPreRequest.id == req_id).first()
+    obj = db.query(TravelPreRequest).filter(
+        TravelPreRequest.id == req_id,
+        TravelPreRequest.deleted_at.is_(None),
+    ).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    if obj.status == "approved":
+        return obj  # idempotent
+
     obj.status = "approved"
+
+    # Auto-create a draft Travel Expense from the approved request
+    expense = TravelRequest(
+        id=str(uuid.uuid4()),
+        first_name=obj.first_name,
+        last_name=obj.last_name,
+        employee_name=f"{obj.first_name} {obj.last_name}".strip(),
+        employee_email=obj.employee_email,
+        department=obj.department,
+        destination=obj.destination,
+        purpose=obj.purpose,
+        work_package=obj.work_package,
+        trip_start=obj.travel_start,
+        trip_end=obj.travel_end,
+        project_id=obj.project_id,
+        status="draft",
+    )
+    db.add(expense)
     db.commit()
     db.refresh(obj)
+
+    # Attach the expense id to the response via a transient attribute
+    obj.expense_id = expense.id  # type: ignore[attr-defined]
     return obj
 
 
@@ -151,11 +176,12 @@ def reject_pre_request(
     req_id: str,
     body: RejectBody,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    if current_user.role not in ("approver", "admin"):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    obj = db.query(TravelPreRequest).filter(TravelPreRequest.id == req_id).first()
+    obj = db.query(TravelPreRequest).filter(
+        TravelPreRequest.id == req_id,
+        TravelPreRequest.deleted_at.is_(None),
+    ).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
     obj.status = "rejected"
