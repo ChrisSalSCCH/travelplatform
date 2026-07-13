@@ -143,6 +143,7 @@ export default function SubmitPage() {
 
   // Car route
   const [carEnabled, setCarEnabled] = useState(false);
+  const [privateCarUsed, setPrivateCarUsed] = useState(true);
   const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
   const [routeDest, setRouteDest] = useState('');
   const [waypoints, setWaypoints] = useState<string[]>([]);
@@ -252,7 +253,7 @@ export default function SubmitPage() {
   const updateWaypoint = (i: number, v: string) => setWaypoints(prev => prev.map((w, idx) => idx === i ? v : w));
   const removeWaypoint = (i: number) => setWaypoints(prev => prev.filter((_, idx) => idx !== i));
 
-  const addReceipt = () => setReceipts(prev => [...prev, { _id: genId(), category: 'accommodation', description: '', amount: '', file: null, receipt_url: null }]);
+  const addReceipt = () => setReceipts(prev => [...prev, { _id: genId(), category: 'accommodation', description: '', amount: '', file: null, receipt_url: null, paidPrivately: true }]);
   const updateReceipt = (id: string, patch: Partial<ReceiptDraft>) =>
     setReceipts(prev => prev.map(r => r._id === id ? { ...r, ...patch } : r));
   const removeReceipt = (id: string) => setReceipts(prev => prev.filter(r => r._id !== id));
@@ -479,7 +480,29 @@ export default function SubmitPage() {
 
           {carEnabled && (
             <div className="px-6 pb-6 space-y-4 border-t" style={{ borderColor: 'hsl(var(--border))' }}>
-              <div className="pt-4 space-y-3">
+              {/* Vehicle type */}
+              <div className="flex gap-3 pt-4">
+                {([['private', 'Private car'], ['company', 'Company car / pool']] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setPrivateCarUsed(val === 'private')}
+                    className="px-4 py-1.5 text-xs font-semibold rounded transition-all"
+                    style={{
+                      background: (val === 'private') === privateCarUsed ? 'rgba(0,255,65,0.15)' : 'hsl(var(--card))',
+                      color: (val === 'private') === privateCarUsed ? 'var(--scch-green)' : 'hsl(var(--muted-foreground))',
+                      border: `1px solid ${(val === 'private') === privateCarUsed ? 'rgba(0,255,65,0.35)' : 'hsl(var(--border))'}`,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {!privateCarUsed && (
+                <p className="text-xs px-3 py-2 rounded" style={{ color: '#ffaa00', background: 'rgba(255,170,0,0.08)', border: '1px solid rgba(255,170,0,0.2)' }}>
+                  Company/pool cars are not eligible for mileage allowance under §†26 EStG.
+                </p>
+              )}
+              <div className="space-y-3">
                 <Field label="Origin">
                   <div className="relative">
                     <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--scch-gray)' }} />
@@ -509,6 +532,7 @@ export default function SubmitPage() {
                   <Plus size={12} /> Add waypoint
                 </button>
               </div>
+              {/* end inner route fields */}
 
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={returnTrip} onChange={e => setReturnTrip(e.target.checked)} />
@@ -719,16 +743,34 @@ export default function SubmitPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
                       <label className="flex items-center gap-2 cursor-pointer text-xs scch-btn-ghost px-3 py-1.5 rounded">
                         <Upload size={12} />
                         {r.file ? r.file.name : 'Upload receipt (PDF / JPG)'}
                         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
                           onChange={e => handleReceiptFile(r._id, e.target.files?.[0] ?? null)} />
                       </label>
-                      <button onClick={() => removeReceipt(r._id)} className="p-1.5 rounded scch-btn-ghost">
-                        <Trash2 size={13} style={{ color: '#ff5a5a' }} />
-                      </button>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={r.paidPrivately}
+                            onChange={e => updateReceipt(r._id, { paidPrivately: e.target.checked })}
+                          />
+                          <span style={{ color: r.paidPrivately ? 'hsl(var(--foreground))' : 'var(--scch-gray)' }}>
+                            Paid privately
+                          </span>
+                          {r.paidPrivately && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold"
+                              style={{ background: 'rgba(0,255,65,0.1)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.2)' }}>
+                              reimbursable
+                            </span>
+                          )}
+                        </label>
+                        <button onClick={() => removeReceipt(r._id)} className="p-1.5 rounded scch-btn-ghost">
+                          <Trash2 size={13} style={{ color: '#ff5a5a' }} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

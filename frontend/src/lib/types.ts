@@ -98,6 +98,7 @@ export interface ReceiptDraft {
   _id: string; category: ReceiptCategory;
   description: string; amount: string;
   file: File | null; receipt_url: string | null;
+  paidPrivately: boolean;
   extracting?: boolean;
   autoDetected?: boolean;
 }
