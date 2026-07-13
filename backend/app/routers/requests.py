@@ -217,6 +217,7 @@ def add_item(request_id: str, body: ExpenseItemCreate, db: Session = Depends(get
         id=str(uuid.uuid4()), request_id=request_id,
         category=body.category, date=body.date, description=body.description,
         km=body.km, amount=computed_amount, receipt_url=body.receipt_url,
+        paid_privately=body.paid_privately,
     )
     db.add(item); req.updated_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(item)
@@ -231,6 +232,26 @@ def update_item(item_id: str, body: ExpenseItemUpdate, db: Session = Depends(get
     if item.category == "mileage" and item.km is not None:
         rate = db.query(DailyRate).filter(DailyRate.key == "mileage_car").first()
         if rate: item.amount = Decimal(str(item.km)) * rate.amount
+    item.updated_at = datetime.now(timezone.utc)
+    db.commit(); db.refresh(item)
+    return item
+
+
+@items_router.patch("/{item_id}/approve", response_model=ExpenseItemResponse)
+def approve_item(item_id: str, db: Session = Depends(get_db)):
+    item = db.query(ExpenseItem).filter(ExpenseItem.id == item_id, ExpenseItem.deleted_at.is_(None)).first()
+    if not item: raise HTTPException(404, "Item not found")
+    item.receipt_approved = True
+    item.updated_at = datetime.now(timezone.utc)
+    db.commit(); db.refresh(item)
+    return item
+
+
+@items_router.patch("/{item_id}/reject", response_model=ExpenseItemResponse)
+def reject_item(item_id: str, db: Session = Depends(get_db)):
+    item = db.query(ExpenseItem).filter(ExpenseItem.id == item_id, ExpenseItem.deleted_at.is_(None)).first()
+    if not item: raise HTTPException(404, "Item not found")
+    item.receipt_approved = False
     item.updated_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(item)
     return item

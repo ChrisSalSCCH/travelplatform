@@ -97,6 +97,7 @@ class RouteCalculateResponse(BaseModel):
 class ExpenseItemCreate(BaseModel):
     category: str; date: date; description: str
     km: Optional[Decimal] = None; amount: Decimal; receipt_url: Optional[str] = None
+    paid_privately: bool = True
     @field_validator("category")
     @classmethod
     def category_valid(cls, v: str) -> str:
@@ -118,6 +119,7 @@ class ExpenseItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str; request_id: str; category: str; date: date; description: str
     km: Optional[Decimal]; amount: Decimal; receipt_url: Optional[str]
+    paid_privately: bool; receipt_approved: Optional[bool]
     created_at: datetime; updated_at: datetime
 
 

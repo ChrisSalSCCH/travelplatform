@@ -46,6 +46,8 @@ export interface ExpenseItem {
   id: string; request_id: string; category: ExpenseCategory;
   date: string; description: string; km: number | null;
   amount: number; receipt_url: string | null;
+  paid_privately: boolean;
+  receipt_approved: boolean | null;
   created_at: string; updated_at: string;
 }
 

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Clock, CheckCircle, XCircle, FileText, Search, Image, CreditCard, Wallet } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, FileText, Search } from 'lucide-react';
 import { getRequests, getProjects, getPreRequests, approvePreRequest, rejectPreRequest } from '../lib/api';
 import type { TravelRequest, TravelPreRequest } from '../lib/types';
 import Layout from '../components/Layout';
@@ -11,22 +11,21 @@ import RequestDrawer from '../components/RequestDrawer';
 import { formatDate, formatCurrency } from '../lib/utils';
 
 export default function ApproverPage() {
-  const [tab, setTab] = useState<'pre' | 'expense' | 'receipts'>('pre');
+  const [tab, setTab] = useState<'pre' | 'expense'>('pre');
 
   return (
     <Layout>
       <div className="w-full px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
           <h1 className="text-4xl normal-case mb-1">approvals</h1>
-          <p style={{ color: 'var(--scch-gray)' }}>Review travel requests, expense reports and uploaded receipts.</p>
+          <p style={{ color: 'var(--scch-gray)' }}>Review travel requests and expense reports.</p>
         </div>
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-8 p-1 rounded-lg" style={{ background: 'hsl(var(--muted))' }}>
           {([
-            { key: 'pre',      label: 'Travel Requests', icon: FileText },
-            { key: 'expense',  label: 'Expense Reports', icon: Clock },
-            { key: 'receipts', label: 'Receipts',        icon: Image },
+            { key: 'pre',     label: 'Travel Requests', icon: FileText },
+            { key: 'expense', label: 'Expense Reports',  icon: Clock },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -43,9 +42,8 @@ export default function ApproverPage() {
           ))}
         </div>
 
-        {tab === 'pre'      && <PreRequestsTab />}
-        {tab === 'expense'  && <ExpenseTab />}
-        {tab === 'receipts' && <ReceiptsTab />}
+        {tab === 'pre'     && <PreRequestsTab />}
+        {tab === 'expense' && <ExpenseTab />}
       </div>
     </Layout>
   );
@@ -59,8 +57,10 @@ function FilterBar({
   statusFilter, onStatus, statusOptions,
 }: {
   search: string; onSearch: (v: string) => void;
-  projectFilter: string; onProject: (v: string) => void; projects: { id: string; code: string; name: string }[];
-  statusFilter?: string; onStatus?: (v: string) => void; statusOptions?: { value: string; label: string }[];
+  projectFilter: string; onProject: (v: string) => void;
+  projects: { id: string; code: string; name: string }[];
+  statusFilter?: string; onStatus?: (v: string) => void;
+  statusOptions?: { value: string; label: string }[];
 }) {
   return (
     <div className="flex flex-wrap gap-3 mb-6">
@@ -123,7 +123,11 @@ function PreRequestsTab() {
 
   const reject = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => rejectPreRequest(id, reason),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pre-requests'] }); setRejectId(null); setRejectReason(''); toast.success('Request rejected.'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pre-requests'] });
+      setRejectId(null); setRejectReason('');
+      toast.success('Request rejected.');
+    },
     onError: () => toast.error('Failed to reject'),
   });
 
@@ -178,19 +182,34 @@ function PreRequestsTab() {
                       <PreStatusBadge status={req.status as TravelPreRequest['status']} />
                     ) : rejectId === req.id ? (
                       <div className="flex flex-col gap-1 w-full">
-                        <input className="scch-input px-2 py-1 text-xs w-full" placeholder="Reason" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+                        <input className="scch-input px-2 py-1 text-xs w-full" placeholder="Reason"
+                          value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
                         <div className="flex gap-1">
-                          <button className="flex-1 text-xs py-1 rounded font-semibold" style={{ background: 'rgba(255,90,90,0.15)', color: '#ff5a5a', border: '1px solid rgba(255,90,90,0.3)' }}
-                            disabled={!rejectReason || reject.isPending} onClick={() => reject.mutate({ id: req.id, reason: rejectReason })}>Confirm</button>
-                          <button className="flex-1 text-xs py-1 rounded scch-btn-ghost font-semibold" onClick={() => { setRejectId(null); setRejectReason(''); }}>Cancel</button>
+                          <button
+                            className="flex-1 text-xs py-1 rounded font-semibold"
+                            style={{ background: 'rgba(255,90,90,0.15)', color: '#ff5a5a', border: '1px solid rgba(255,90,90,0.3)' }}
+                            disabled={!rejectReason || reject.isPending}
+                            onClick={() => reject.mutate({ id: req.id, reason: rejectReason })}
+                          >Confirm</button>
+                          <button
+                            className="flex-1 text-xs py-1 rounded scch-btn-ghost font-semibold"
+                            onClick={() => { setRejectId(null); setRejectReason(''); }}
+                          >Cancel</button>
                         </div>
                       </div>
                     ) : (
                       <>
-                        <button className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded" style={{ background: 'rgba(0,255,65,0.12)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.3)' }}
-                          disabled={approve.isPending} onClick={() => approve.mutate(req.id)}><CheckCircle size={12} /> Approve</button>
-                        <button className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded" style={{ background: 'rgba(255,90,90,0.1)', color: '#ff5a5a', border: '1px solid rgba(255,90,90,0.25)' }}
-                          onClick={() => setRejectId(req.id)}><XCircle size={12} /> Reject</button>
+                        <button
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded"
+                          style={{ background: 'rgba(0,255,65,0.12)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.3)' }}
+                          disabled={approve.isPending}
+                          onClick={() => approve.mutate(req.id)}
+                        ><CheckCircle size={12} /> Approve</button>
+                        <button
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded"
+                          style={{ background: 'rgba(255,90,90,0.1)', color: '#ff5a5a', border: '1px solid rgba(255,90,90,0.25)' }}
+                          onClick={() => setRejectId(req.id)}
+                        ><XCircle size={12} /> Reject</button>
                       </>
                     )}
                   </div>
@@ -206,9 +225,11 @@ function PreRequestsTab() {
                   </div>
                   {req.status === 'submitted' && (
                     <div className="flex gap-2 mt-3">
-                      <button className="flex-1 text-xs py-1.5 font-semibold rounded" style={{ background: 'rgba(0,255,65,0.12)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.3)' }}
+                      <button className="flex-1 text-xs py-1.5 font-semibold rounded"
+                        style={{ background: 'rgba(0,255,65,0.12)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.3)' }}
                         onClick={() => approve.mutate(req.id)}>Approve</button>
-                      <button className="flex-1 text-xs py-1.5 font-semibold rounded" style={{ background: 'rgba(255,90,90,0.1)', color: '#ff5a5a', border: '1px solid rgba(255,90,90,0.25)' }}
+                      <button className="flex-1 text-xs py-1.5 font-semibold rounded"
+                        style={{ background: 'rgba(255,90,90,0.1)', color: '#ff5a5a', border: '1px solid rgba(255,90,90,0.25)' }}
                         onClick={() => setRejectId(req.id)}>Reject</button>
                     </div>
                   )}
@@ -308,128 +329,6 @@ function ExpenseTab() {
         </div>
       )}
       <RequestDrawer request={selected} onClose={() => setSelected(null)} showActions />
-    </div>
-  );
-}
-
-// ── Receipts Gallery Tab ────────────────────────────────────────────────────
-
-function ReceiptsTab() {
-  const [search, setSearch] = useState('');
-  const [projectFilter, setProjectFilter] = useState('');
-  const [enlarged, setEnlarged] = useState<string | null>(null);
-
-  const { data: allRequests = [], isLoading } = useQuery({
-    queryKey: ['requests', 'all'],
-    queryFn: () => getRequests(),
-  });
-  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: getProjects });
-
-  // Collect all items that have a receipt_url
-  const receipts = useMemo(() => {
-    return allRequests
-      .filter(r => !projectFilter || r.project_id === projectFilter)
-      .filter(r => !search || `${r.employee_name} ${r.first_name} ${r.last_name}`.toLowerCase().includes(search.toLowerCase()))
-      .flatMap(req =>
-        req.items
-          .filter(item => item.receipt_url)
-          .map(item => ({
-            item,
-            req,
-            // paidPrivately is stored in description as a suffix when submitted
-            paidPrivately: !item.description.includes('[SCCH CC]'),
-          }))
-      )
-      .sort((a, b) => new Date(a.req.trip_start).getTime() - new Date(b.req.trip_start).getTime());
-  }, [allRequests, projectFilter, search]);
-
-  return (
-    <div>
-      <FilterBar
-        search={search} onSearch={setSearch}
-        projectFilter={projectFilter} onProject={setProjectFilter} projects={projects}
-      />
-      {isLoading ? <LoadingRows /> : receipts.length === 0 ? (
-        <EmptyState icon={Image} label="No receipts with uploaded files found." />
-      ) : (
-        <>
-          <p className="text-xs mb-4" style={{ color: 'var(--scch-gray)' }}>
-            {receipts.length} receipt{receipts.length !== 1 ? 's' : ''} found
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {receipts.map(({ item, req, paidPrivately }) => (
-              <div
-                key={item.id}
-                className="relative group rounded-xl overflow-hidden cursor-pointer"
-                style={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', aspectRatio: '3/4' }}
-                onClick={() => setEnlarged(item.receipt_url!)}
-              >
-                {/* Receipt image / PDF icon */}
-                {item.receipt_url?.match(/\.(jpg|jpeg|png|webp|gif)$/i) ? (
-                  <img
-                    src={item.receipt_url}
-                    alt={item.description}
-                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center" style={{ background: 'hsl(var(--muted))' }}>
-                    <FileText size={40} style={{ color: 'var(--scch-gray)' }} />
-                  </div>
-                )}
-
-                {/* Overlay */}
-                <div
-                  className="absolute inset-0 flex flex-col justify-between p-2.5"
-                  style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 40%, transparent 55%, rgba(0,0,0,0.72) 100%)' }}
-                >
-                  {/* Top: payment badge */}
-                  <div className="flex justify-end">
-                    <span
-                      className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-                      style={{
-                        background: paidPrivately ? 'rgba(0,255,65,0.2)' : 'rgba(255,170,0,0.2)',
-                        color: paidPrivately ? 'var(--scch-green)' : '#ffaa00',
-                        border: `1px solid ${paidPrivately ? 'rgba(0,255,65,0.4)' : 'rgba(255,170,0,0.4)'}`,
-                        backdropFilter: 'blur(4px)',
-                      }}
-                    >
-                      {paidPrivately
-                        ? <><Wallet size={10} /> Private</>
-                        : <><CreditCard size={10} /> SCCH CC</>}
-                    </span>
-                  </div>
-
-                  {/* Bottom: amount + person */}
-                  <div>
-                    <p className="font-bold text-white text-lg leading-tight">{formatCurrency(item.amount)}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                      {req.employee_name || `${req.first_name} ${req.last_name}`}
-                    </p>
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                      {item.description}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Lightbox */}
-      {enlarged && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.88)' }}
-          onClick={() => setEnlarged(null)}
-        >
-          {enlarged.match(/\.(jpg|jpeg|png|webp|gif)$/i) ? (
-            <img src={enlarged} alt="Receipt" className="max-w-full max-h-full rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
-          ) : (
-            <iframe src={enlarged} className="w-full max-w-3xl h-[80vh] rounded-xl" onClick={e => e.stopPropagation()} />
-          )}
-        </div>
-      )}
     </div>
   );
 }

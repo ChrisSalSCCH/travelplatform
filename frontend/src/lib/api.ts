@@ -89,9 +89,11 @@ export const calculateRoute = (origin: string, destination: string, waypoints?: 
 // Items
 export const addItem = (
   requestId: string,
-  data: { category: string; date: string; description: string; km?: number | null; amount: number; receipt_url?: string | null },
+  data: { category: string; date: string; description: string; km?: number | null; amount: number; receipt_url?: string | null; paid_privately?: boolean },
 ) => http.post(`/requests/${requestId}/items`, data).then(r => r.data);
 export const deleteItem = (itemId: string) => http.delete(`/items/${itemId}`);
+export const approveItem = (itemId: string) => http.patch<import('./types').ExpenseItem>(`/items/${itemId}/approve`).then(r => r.data);
+export const rejectItem  = (itemId: string) => http.patch<import('./types').ExpenseItem>(`/items/${itemId}/reject`).then(r => r.data);
 
 // Rates
 export const getRates = () => http.get<DailyRate[]>('/rates').then(r => r.data);

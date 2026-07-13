@@ -346,6 +346,7 @@ export default function SubmitPage() {
             category: receipt.category, date: tripStart,
             description: receipt.description || receipt.category,
             amount: Number(receipt.amount), receipt_url,
+            paid_privately: receipt.paidPrivately,
           });
         }
       }

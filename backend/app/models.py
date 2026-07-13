@@ -194,6 +194,8 @@ class ExpenseItem(Base):
     km: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     receipt_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    paid_privately: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    receipt_approved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)  # None=pending, True=approved, False=rejected
     created_at: Mapped[datetime] = mapped_column(default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
