@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   X, FileText, CheckCircle, XCircle, Car, MapPin, Users,
-  Wallet, CreditCard, Check, AlertCircle, Clock,
+  Wallet, CreditCard, Check, AlertCircle, Clock, Download,
 } from 'lucide-react';
 import type { TravelRequest, ExpenseItem } from '../lib/types';
 import { approveRequest, rejectRequest, approveItem, rejectItem } from '../lib/api';
@@ -313,14 +313,26 @@ export default function RequestDrawer({ request, onClose, showActions = false }:
                       <p className="font-bold text-lg" style={{ color: 'var(--scch-green)' }}>{formatCurrency(activeReceipt.amount)}</p>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {activeReceipt.paid_privately
                           ? <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded" style={{ background: 'rgba(0,255,65,0.1)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.2)' }}><Wallet size={11} /> Paid privately</span>
                           : <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded" style={{ background: 'rgba(255,170,0,0.1)', color: '#ffaa00', border: '1px solid rgba(255,170,0,0.2)' }}><CreditCard size={11} /> SCCH Credit Card</span>
                         }
                         <ReceiptApprovalBadge approved={activeReceipt.receipt_approved} />
                       </div>
+                      {activeReceipt.receipt_url && (
+                        <a
+                          href={activeReceipt.receipt_url}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded transition-all"
+                          style={{ background: 'rgba(0,255,65,0.08)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.2)' }}
+                        >
+                          <Download size={11} /> Download
+                        </a>
+                      )}
                     </div>
 
                     {/* Approve / Reject buttons */}
