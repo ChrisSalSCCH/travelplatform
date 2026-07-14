@@ -161,7 +161,7 @@ function ProjectsTab() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ code: '', name: '', funder: 'FFG' as Funder, active: true });
 
-  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: getProjects });
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
 
   const add = useMutation({
     mutationFn: () => createProject(form),

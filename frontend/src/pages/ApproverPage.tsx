@@ -101,7 +101,7 @@ function PreRequestsTab() {
     queryFn: () => getPreRequests(),
     refetchInterval: 30_000,
   });
-  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: getProjects });
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
 
   const items = useMemo(() => {
     return allItems
@@ -256,7 +256,7 @@ function ExpenseTab() {
     queryFn: () => getRequests(),
     refetchInterval: 30_000,
   });
-  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: getProjects });
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
 
   const requests = useMemo(() => {
     return allRequests
