@@ -92,7 +92,10 @@ export const addItem = (
   data: { category: string; date: string; description: string; km?: number | null; amount: number; receipt_url?: string | null; paid_privately?: boolean },
 ) => http.post(`/requests/${requestId}/items`, data).then(r => r.data);
 export const deleteItem = (itemId: string) => http.delete(`/items/${itemId}`);
-export const approveItem = (itemId: string) => http.patch<import('./types').ExpenseItem>(`/items/${itemId}/approve`).then(r => r.data);
+export const approveItem = (
+  itemId: string,
+  body: { kreditor: string; approved_amount?: number | null; approval_comment?: string | null; vat_rate?: number | null },
+) => http.patch<import('./types').ExpenseItem>(`/items/${itemId}/approve`, body).then(r => r.data);
 export const rejectItem  = (itemId: string) => http.patch<import('./types').ExpenseItem>(`/items/${itemId}/reject`).then(r => r.data);
 
 // Rates

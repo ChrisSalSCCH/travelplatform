@@ -12,7 +12,7 @@ from app.schemas import (
     RouteLegCreate, RouteLegResponse,
     CarPassengerCreate, CarPassengerResponse,
     DailyAllowanceDayCreate, DailyAllowanceDayResponse,
-    RejectBody,
+    RejectBody, ItemApproveBody,
 )
 import uuid
 
@@ -238,10 +238,16 @@ def update_item(item_id: str, body: ExpenseItemUpdate, db: Session = Depends(get
 
 
 @items_router.patch("/{item_id}/approve", response_model=ExpenseItemResponse)
-def approve_item(item_id: str, db: Session = Depends(get_db)):
+def approve_item(item_id: str, body: ItemApproveBody, db: Session = Depends(get_db)):
     item = db.query(ExpenseItem).filter(ExpenseItem.id == item_id, ExpenseItem.deleted_at.is_(None)).first()
     if not item: raise HTTPException(404, "Item not found")
     item.receipt_approved = True
+    item.kreditor = body.kreditor
+    if body.approved_amount is not None:
+        item.approved_amount = body.approved_amount
+        item.approval_comment = body.approval_comment
+    if body.vat_rate is not None:
+        item.vat_rate = body.vat_rate
     item.updated_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(item)
     return item

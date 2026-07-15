@@ -48,6 +48,10 @@ export interface ExpenseItem {
   amount: number; receipt_url: string | null;
   paid_privately: boolean;
   receipt_approved: boolean | null;
+  kreditor: string | null;
+  approved_amount: number | null;
+  approval_comment: string | null;
+  vat_rate: number | null;
   created_at: string; updated_at: string;
 }
 

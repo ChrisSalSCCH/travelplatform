@@ -196,6 +196,10 @@ class ExpenseItem(Base):
     receipt_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     paid_privately: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     receipt_approved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)  # None=pending, True=approved, False=rejected
+    kreditor: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    approved_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    approval_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    vat_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

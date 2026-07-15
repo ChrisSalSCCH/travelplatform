@@ -114,12 +114,26 @@ class ExpenseItemUpdate(BaseModel):
     category: Optional[str] = None; date: Optional[date] = None
     description: Optional[str] = None; km: Optional[Decimal] = None
     amount: Optional[Decimal] = None; receipt_url: Optional[str] = None
+    kreditor: Optional[str] = None
+    approved_amount: Optional[Decimal] = None
+    approval_comment: Optional[str] = None
+    vat_rate: Optional[Decimal] = None
+
+class ItemApproveBody(BaseModel):
+    kreditor: str
+    approved_amount: Optional[Decimal] = None
+    approval_comment: Optional[str] = None
+    vat_rate: Optional[Decimal] = None
 
 class ExpenseItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str; request_id: str; category: str; date: date; description: str
     km: Optional[Decimal]; amount: Decimal; receipt_url: Optional[str]
     paid_privately: bool; receipt_approved: Optional[bool]
+    kreditor: Optional[str] = None
+    approved_amount: Optional[Decimal] = None
+    approval_comment: Optional[str] = None
+    vat_rate: Optional[Decimal] = None
     created_at: datetime; updated_at: datetime
 
 

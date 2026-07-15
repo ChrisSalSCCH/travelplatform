@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -53,6 +53,21 @@ export default function RequestDrawer({ request, onClose, showActions = false }:
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [activeReceipt, setActiveReceipt] = useState<ExpenseItem | null>(null);
 
+  // Per-receipt approval fields
+  const [kreditor, setKreditor] = useState('');
+  const [approvedAmount, setApprovedAmount] = useState<string>('');
+  const [approvalComment, setApprovalComment] = useState('');
+  const [vatRate, setVatRate] = useState<string>('');
+
+  // Pre-fill fields when a receipt is selected
+  useEffect(() => {
+    if (!activeReceipt) return;
+    setKreditor(activeReceipt.kreditor ?? '');
+    setApprovedAmount(activeReceipt.approved_amount != null ? String(activeReceipt.approved_amount) : String(activeReceipt.amount));
+    setApprovalComment(activeReceipt.approval_comment ?? '');
+    setVatRate(activeReceipt.vat_rate != null ? String(activeReceipt.vat_rate) : '');
+  }, [activeReceipt?.id]);
+
   const approve = useMutation({
     mutationFn: () => approveRequest(request!.id),
     onSuccess: () => { toast.success('Request approved'); qc.invalidateQueries({ queryKey: ['requests'] }); onClose(); },
@@ -64,7 +79,12 @@ export default function RequestDrawer({ request, onClose, showActions = false }:
     onError: () => toast.error('Failed to reject'),
   });
   const approveItemMut = useMutation({
-    mutationFn: (id: string) => approveItem(id),
+    mutationFn: (id: string) => approveItem(id, {
+      kreditor,
+      approved_amount: approvedAmount !== '' ? Number(approvedAmount) : null,
+      approval_comment: approvalComment || null,
+      vat_rate: vatRate !== '' ? Number(vatRate) : null,
+    }),
     onSuccess: (updated) => {
       toast.success('Receipt approved');
       qc.invalidateQueries({ queryKey: ['requests'] });
@@ -305,6 +325,7 @@ export default function RequestDrawer({ request, onClose, showActions = false }:
 
                   {/* Meta + approval */}
                   <div className="p-4 space-y-3">
+                    {/* Title row */}
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold text-sm">{activeReceipt.description || CATEGORY_LABELS[activeReceipt.category]}</p>
@@ -313,6 +334,7 @@ export default function RequestDrawer({ request, onClose, showActions = false }:
                       <p className="font-bold text-lg" style={{ color: 'var(--scch-green)' }}>{formatCurrency(activeReceipt.amount)}</p>
                     </div>
 
+                    {/* Payment method + status + download */}
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         {activeReceipt.paid_privately
@@ -322,52 +344,138 @@ export default function RequestDrawer({ request, onClose, showActions = false }:
                         <ReceiptApprovalBadge approved={activeReceipt.receipt_approved} />
                       </div>
                       {activeReceipt.receipt_url && (
-                        <a
-                          href={activeReceipt.receipt_url}
-                          download
-                          target="_blank"
-                          rel="noreferrer"
+                        <a href={activeReceipt.receipt_url} download target="_blank" rel="noreferrer"
                           className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded transition-all"
-                          style={{ background: 'rgba(0,255,65,0.08)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.2)' }}
-                        >
+                          style={{ background: 'rgba(0,255,65,0.08)', color: 'var(--scch-green)', border: '1px solid rgba(0,255,65,0.2)' }}>
                           <Download size={11} /> Download
                         </a>
                       )}
                     </div>
 
-                    {/* Approve / Reject buttons */}
-                    {showActions && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded transition-all"
-                          style={{
-                            background: activeReceipt.receipt_approved === true ? 'rgba(0,255,65,0.2)' : 'rgba(0,255,65,0.1)',
-                            color: 'var(--scch-green)',
-                            border: '1px solid rgba(0,255,65,0.3)',
-                          }}
-                          disabled={approveItemMut.isPending}
-                          onClick={() => approveItemMut.mutate(activeReceipt.id)}
-                        >
-                          <CheckCircle size={14} />
-                          {activeReceipt.receipt_approved === true ? 'Approved ✔' : 'Approve Receipt'}
-                        </button>
-                        <button
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded transition-all"
-                          style={{
-                            background: activeReceipt.receipt_approved === false ? 'rgba(255,90,90,0.2)' : 'rgba(255,90,90,0.08)',
-                            color: '#ff5a5a',
-                            border: '1px solid rgba(255,90,90,0.25)',
-                          }}
-                          disabled={rejectItemMut.isPending}
-                          onClick={() => rejectItemMut.mutate(activeReceipt.id)}
-                        >
-                          <XCircle size={14} />
-                          {activeReceipt.receipt_approved === false ? 'Rejected ✗' : 'Reject Receipt'}
-                        </button>
-                      </div>
+                    {/* ── Approval fields (edit mode) ── */}
+                    {showActions ? (() => {
+                      const amountChanged = approvedAmount !== '' && Number(approvedAmount) !== Number(activeReceipt.amount);
+                      const canApprove = kreditor.trim().length > 0 && (!amountChanged || approvalComment.trim().length > 0);
+                      return (
+                        <div className="space-y-2 pt-1">
+                          {/* Kreditor — required */}
+                          <div>
+                            <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--scch-gray)' }}>
+                              Kreditor <span style={{ color: '#ff5a5a' }}>*</span>
+                            </label>
+                            <input
+                              className="scch-input w-full px-3 py-2 text-sm"
+                              placeholder="e.g. Hotel Beispiel GmbH"
+                              value={kreditor}
+                              onChange={e => setKreditor(e.target.value)}
+                            />
+                          </div>
+
+                          {/* Approved amount + VAT row */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--scch-gray)' }}>Approved amount (€)</label>
+                              <input
+                                type="number" step="0.01" min="0"
+                                className="scch-input w-full px-3 py-2 text-sm"
+                                value={approvedAmount}
+                                onChange={e => setApprovedAmount(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--scch-gray)' }}>VAT rate (%)</label>
+                              <input
+                                type="number" step="0.01" min="0" max="100"
+                                className="scch-input w-full px-3 py-2 text-sm"
+                                placeholder="e.g. 20"
+                                value={vatRate}
+                                onChange={e => setVatRate(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Comment — required when amount changed */}
+                          {amountChanged && (
+                            <div>
+                              <label className="text-xs font-semibold mb-1 block" style={{ color: '#ffaa00' }}>
+                                Comment required — amount differs from original <span style={{ color: '#ff5a5a' }}>*</span>
+                              </label>
+                              <textarea
+                                rows={2}
+                                className="scch-input w-full px-3 py-2 text-sm resize-none"
+                                placeholder="Reason for adjustment..."
+                                value={approvalComment}
+                                onChange={e => setApprovalComment(e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {/* Approve / Reject */}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded transition-all"
+                              style={{
+                                background: canApprove ? (activeReceipt.receipt_approved === true ? 'rgba(0,255,65,0.25)' : 'rgba(0,255,65,0.12)') : 'rgba(0,255,65,0.05)',
+                                color: canApprove ? 'var(--scch-green)' : 'rgba(0,255,65,0.35)',
+                                border: '1px solid rgba(0,255,65,0.3)',
+                                cursor: canApprove ? 'pointer' : 'not-allowed',
+                              }}
+                              disabled={!canApprove || approveItemMut.isPending}
+                              onClick={() => approveItemMut.mutate(activeReceipt.id)}
+                            >
+                              <CheckCircle size={14} />
+                              {activeReceipt.receipt_approved === true ? 'Approved ✔' : 'Approve Receipt'}
+                            </button>
+                            <button
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded transition-all"
+                              style={{
+                                background: activeReceipt.receipt_approved === false ? 'rgba(255,90,90,0.2)' : 'rgba(255,90,90,0.08)',
+                                color: '#ff5a5a',
+                                border: '1px solid rgba(255,90,90,0.25)',
+                              }}
+                              disabled={rejectItemMut.isPending}
+                              onClick={() => rejectItemMut.mutate(activeReceipt.id)}
+                            >
+                              <XCircle size={14} />
+                              {activeReceipt.receipt_approved === false ? 'Rejected ✗' : 'Reject Receipt'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      /* Read-only view of saved approval data */
+                      (activeReceipt.kreditor || activeReceipt.approved_amount != null || activeReceipt.vat_rate != null) && (
+                        <div className="space-y-1 pt-1">
+                          {activeReceipt.kreditor && (
+                            <div className="scch-card px-3 py-2">
+                              <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>Kreditor</p>
+                              <p className="text-sm font-medium">{activeReceipt.kreditor}</p>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            {activeReceipt.approved_amount != null && (
+                              <div className="scch-card px-3 py-2">
+                                <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>Approved</p>
+                                <p className="text-sm font-bold" style={{ color: 'var(--scch-green)' }}>{formatCurrency(activeReceipt.approved_amount)}</p>
+                              </div>
+                            )}
+                            {activeReceipt.vat_rate != null && (
+                              <div className="scch-card px-3 py-2">
+                                <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>VAT</p>
+                                <p className="text-sm font-bold">{activeReceipt.vat_rate} %</p>
+                              </div>
+                            )}
+                          </div>
+                          {activeReceipt.approval_comment && (
+                            <div className="scch-card px-3 py-2">
+                              <p className="text-xs" style={{ color: 'var(--scch-gray)' }}>Comment</p>
+                              <p className="text-sm">{activeReceipt.approval_comment}</p>
+                            </div>
+                          )}
+                        </div>
+                      )
                     )}
-                  </div>
-                </div>
+                  </div>                </div>
               )}
             </section>
           )}
