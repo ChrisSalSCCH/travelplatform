@@ -410,16 +410,28 @@ export default function SubmitPage() {
         <Section icon={Info} title="Trip Details" subtitle="Required information about your business trip">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Project" required className="sm:col-span-2">
-              <Combobox options={projectOptions} value={projectId}
-                onChange={val => {
-                  const match = projects.find(p => p.id === val || `${p.code} — ${p.name}` === val);
-                  setProjectId(match ? match.id : val); setWorkPackage('');
-                }}
-                placeholder="Select or type project..." />
+              {projects.length > 0 ? (
+                <Combobox options={projectOptions} value={projectId}
+                  onChange={val => {
+                    const match = projects.find(p => p.id === val || `${p.code} — ${p.name}` === val);
+                    setProjectId(match ? match.id : val); setWorkPackage('');
+                  }}
+                  placeholder="Select or type project..." />
+              ) : (
+                <input className="scch-input w-full px-3 py-2 text-sm"
+                  placeholder="Enter project name..."
+                  value={projectId} onChange={e => { setProjectId(e.target.value); setWorkPackage(''); }} />
+              )}
             </Field>
             <Field label="Work Package" className="sm:col-span-2">
-              <Combobox options={wpOptions} value={workPackage} onChange={setWorkPackage}
-                placeholder={projectId ? 'Select or type work package...' : 'Select a project first...'} />
+              {workPackages.length > 0 ? (
+                <Combobox options={wpOptions} value={workPackage} onChange={setWorkPackage}
+                  placeholder={projectId ? 'Select or type work package...' : 'Select a project first...'} />
+              ) : (
+                <input className="scch-input w-full px-3 py-2 text-sm"
+                  placeholder="Enter work package (optional)..."
+                  value={workPackage} onChange={e => setWorkPackage(e.target.value)} />
+              )}
             </Field>
             <Field label="Purpose" required className="sm:col-span-2">
               <Combobox options={purposeOptions} value={purpose} onChange={setPurpose}

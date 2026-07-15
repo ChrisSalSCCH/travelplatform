@@ -1,16 +1,11 @@
-import os
 import base64
-import io
 import json
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import JSONResponse
 import httpx
+from app.config import settings
 
 router = APIRouter(prefix="/extract-amount", tags=["extract"])
-
-VLM_BASE_URL = os.environ.get("VLM_BASE_URL", "")
-VLM_API_KEY  = os.environ.get("VLM_API_KEY",  "")
-VLM_MODEL    = os.environ.get("VLM_MODEL",    "gpt-4o-mini")
 
 ALLOWED = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 
@@ -24,7 +19,6 @@ def _pdf_to_png_base64(data: bytes) -> str | None:
 
         reader = PdfReader(_io.BytesIO(data))
         page = reader.pages[0]
-        # Extract images from page; fall back to a plain text approach if none
         images = list(page.images)
         if images:
             img_data = images[0].data
@@ -39,8 +33,8 @@ def _pdf_to_png_base64(data: bytes) -> str | None:
 
 @router.post("")
 async def extract_amount(file: UploadFile = File(...)):
-    if not VLM_BASE_URL or not VLM_API_KEY:
-        return JSONResponse({"amount": None, "error": "no_vlm_key"})
+    if not settings.vlm_enabled or not settings.vlm_base_url:
+        return JSONResponse({"amount": None, "error": "VLM not configured"})
 
     if file.content_type not in ALLOWED:
         return JSONResponse({"amount": None, "error": "unsupported_type"})
@@ -49,7 +43,6 @@ async def extract_amount(file: UploadFile = File(...)):
     if len(data) > 15 * 1024 * 1024:
         return JSONResponse({"amount": None, "error": "file_too_large"})
 
-    # Determine image media type
     media_type = file.content_type
     if media_type == "application/pdf":
         b64 = _pdf_to_png_base64(data)
@@ -66,7 +59,7 @@ async def extract_amount(file: UploadFile = File(...)):
     )
 
     payload = {
-        "model": VLM_MODEL,
+        "model": settings.vlm_model,
         "messages": [
             {
                 "role": "user",
@@ -80,17 +73,19 @@ async def extract_amount(file: UploadFile = File(...)):
         "temperature": 0,
     }
 
-    headers = {
-        "Authorization": f"Bearer {VLM_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if settings.vlm_api_key:
+        headers["Authorization"] = f"Bearer {settings.vlm_api_key}"
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(f"{VLM_BASE_URL}/chat/completions", json=payload, headers=headers)
+            r = await client.post(
+                f"{settings.vlm_base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+            )
             r.raise_for_status()
             content = r.json()["choices"][0]["message"]["content"].strip()
-            # Strip markdown fences if present
             content = content.replace("```json", "").replace("```", "").strip()
             parsed = json.loads(content)
             amount = parsed.get("amount")

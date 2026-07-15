@@ -157,13 +157,25 @@ export default function TravelRequestPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Project" required className="sm:col-span-2">
-                    <Combobox options={projectOptions} value={projectId}
-                      onChange={val => { const m = projects.find(p => p.id === val || `${p.code} — ${p.name}` === val); setProjectId(m ? m.id : val); setWorkPackage(''); }}
-                      placeholder="Select project..." />
+                    {projects.length > 0 ? (
+                      <Combobox options={projectOptions} value={projectId}
+                        onChange={val => { const m = projects.find(p => p.id === val || `${p.code} — ${p.name}` === val); setProjectId(m ? m.id : val); setWorkPackage(''); }}
+                        placeholder="Select project..." />
+                    ) : (
+                      <input className="scch-input w-full px-3 py-2 text-sm"
+                        placeholder="Enter project name..."
+                        value={projectId} onChange={e => { setProjectId(e.target.value); setWorkPackage(''); }} />
+                    )}
                   </Field>
                   <Field label="Work Package" className="sm:col-span-2">
-                    <Combobox options={wpOptions} value={workPackage} onChange={setWorkPackage}
-                      placeholder={projectId ? 'Select work package...' : 'Select a project first...'} />
+                    {workPackages.length > 0 ? (
+                      <Combobox options={wpOptions} value={workPackage} onChange={setWorkPackage}
+                        placeholder={projectId ? 'Select work package...' : 'Select a project first...'} />
+                    ) : (
+                      <input className="scch-input w-full px-3 py-2 text-sm"
+                        placeholder="Enter work package (optional)..."
+                        value={workPackage} onChange={e => setWorkPackage(e.target.value)} />
+                    )}
                   </Field>
                   <Field label="Destination" required className="sm:col-span-2">
                     <input className="scch-input w-full px-3 py-2 text-sm"

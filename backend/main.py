@@ -6,6 +6,8 @@ from app.database import engine, SessionLocal
 from app.models import Base
 from app.seed import seed_database
 from app.migrate import run_migrations
+from app.projects_loader import load_projects_from_file
+from app.config import settings
 from app.routers import projects, requests, rates, upload
 from app.routers.requests import items_router
 from app.routers import route, workpackages
@@ -20,6 +22,10 @@ with SessionLocal() as db:
 
 with SessionLocal() as db:
     seed_database(db)
+
+_projects_file_loaded = False
+with SessionLocal() as db:
+    _projects_file_loaded = load_projects_from_file(db, settings.projects_file)
 
 app = FastAPI(title="SCCH Travel Portal API", version="2.0.0")
 
@@ -49,4 +55,13 @@ app.mount("/api/files", StaticFiles(directory=UPLOAD_DIR), name="files")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "config": {
+            "ad_enabled": settings.ad_enabled,
+            "vlm_enabled": settings.vlm_enabled,
+            "google_maps_configured": bool(settings.google_maps_api_key),
+            "projects_file_loaded": _projects_file_loaded,
+            "projects_file": settings.projects_file,
+        },
+    }

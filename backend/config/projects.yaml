@@ -1,0 +1,42 @@
+# SCCH Travel Portal — Projects & Work Packages
+# Edit this file and restart the backend to update the project list.
+# Entries are upserted into the database on startup (existing data is preserved).
+#
+# funder: FFG | FWF | CDG | OTHER
+
+projects:
+  - code: COMET-K1
+    name: COMET K1 Centre SCCH
+    funder: FFG
+    active: true
+    work_packages:
+      - code: WP1
+        name: Project Management
+      - code: WP2
+        name: Research & Development
+      - code: WP3
+        name: Dissemination
+      - code: WP4
+        name: Industry Cooperation
+
+  - code: BRIDGE
+    name: BRIDGE Programme Project
+    funder: FFG
+    active: true
+    work_packages:
+      - code: WP1
+        name: Requirements Engineering
+      - code: WP2
+        name: Implementation
+      - code: WP3
+        name: Evaluation
+
+  - code: INTERNAL
+    name: Internal / Non-funded
+    funder: OTHER
+    active: true
+    work_packages:
+      - code: ADMIN
+        name: Administration
+      - code: SALES
+        name: Sales & Marketing
