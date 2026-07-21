@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Loader2, LogIn, Zap } from 'lucide-react';
+import { Loader2, LogIn, Zap, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { http } from '../lib/api';
+
+interface AuthConfig {
+  ad_enabled: boolean;
+  ad_domain: string;
+}
 
 export default function LoginPage() {
   const { login, loginDemo } = useAuth();
@@ -11,6 +17,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [authConfig, setAuthConfig] = useState<AuthConfig>({ ad_enabled: false, ad_domain: '' });
+
+  useEffect(() => {
+    http.get<AuthConfig>('/auth/config')
+      .then(r => setAuthConfig(r.data))
+      .catch(() => {/* use defaults */});
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +33,11 @@ export default function LoginPage() {
       await login(email, password);
       navigate('/', { replace: true });
     } catch {
-      toast.error('Invalid email or password');
+      toast.error(
+        authConfig.ad_enabled
+          ? 'Login failed. Check your Windows credentials.'
+          : 'Invalid email or password',
+      );
     } finally {
       setLoading(false);
     }
@@ -37,6 +54,14 @@ export default function LoginPage() {
       setDemoLoading(false);
     }
   };
+
+  const emailPlaceholder = authConfig.ad_enabled && authConfig.ad_domain
+    ? `firstname.lastname@${authConfig.ad_domain}`
+    : 'name@scch.at';
+
+  const subtitle = authConfig.ad_enabled
+    ? 'Use your Windows / AD account to sign in.'
+    : 'Use your SCCH account to continue.';
 
   return (
     <div
@@ -73,8 +98,28 @@ export default function LoginPage() {
       >
         <div>
           <h1 className="text-2xl normal-case mb-1">sign in</h1>
-          <p className="text-sm" style={{ color: 'var(--scch-gray)' }}>Use your SCCH account to continue.</p>
+          <p className="text-sm" style={{ color: 'var(--scch-gray)' }}>{subtitle}</p>
         </div>
+
+        {/* AD badge */}
+        {authConfig.ad_enabled && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+            style={{
+              background: 'rgba(96,170,255,0.08)',
+              border: '1px solid rgba(96,170,255,0.25)',
+              color: '#60aaff',
+            }}
+          >
+            <ShieldCheck size={13} />
+            Active Directory
+            {authConfig.ad_domain && (
+              <span className="ml-auto font-mono" style={{ color: 'rgba(96,170,255,0.7)' }}>
+                {authConfig.ad_domain}
+              </span>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
@@ -83,7 +128,7 @@ export default function LoginPage() {
               type="email"
               autoComplete="email"
               className="scch-input w-full px-3 py-2.5 text-sm"
-              placeholder="name@scch.at"
+              placeholder={emailPlaceholder}
               value={email}
               onChange={e => setEmail(e.target.value)}
               required

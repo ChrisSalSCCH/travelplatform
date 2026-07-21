@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.ad_auth import ad_authenticate
+from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -107,6 +109,12 @@ class UserResponse(BaseModel):
 class TokenResponse(BaseModel):
     token: str
     user: UserResponse
+    auth_method: str = "local"  # "local" | "ad"
+
+
+class AuthConfigResponse(BaseModel):
+    ad_enabled: bool
+    ad_domain: str
 
 
 # ── Auth dependencies ─────────────────────────────────────────────────────────
@@ -140,17 +148,65 @@ def get_current_user_optional(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@router.get("/config", response_model=AuthConfigResponse)
+def auth_config():
+    """Public endpoint — frontend reads this to adapt the login UI."""
+    return {"ad_enabled": settings.ad_enabled, "ad_domain": settings.ad_domain}
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginBody, db: Session = Depends(get_db)):
+    email = body.email.lower().strip()
+
+    # ── 1. Try Active Directory first (when enabled) ───────────────────────
+    if settings.ad_enabled:
+        ad_info = ad_authenticate(email, body.password)
+        if ad_info:
+            # Upsert the user in the local DB
+            user = db.query(User).filter(
+                User.email == ad_info["email"],
+                User.deleted_at.is_(None),
+            ).first()
+            if not user:
+                user = User(
+                    id=str(uuid.uuid4()),
+                    email=ad_info["email"],
+                    first_name=ad_info["first_name"],
+                    last_name=ad_info["last_name"],
+                    department=ad_info["department"],
+                    role="employee",
+                    is_demo=False,
+                    password_hash=None,  # AD users have no local password
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            else:
+                # Sync mutable profile fields from AD
+                changed = False
+                for field, val in [
+                    ("first_name", ad_info["first_name"]),
+                    ("last_name",  ad_info["last_name"]),
+                    ("department", ad_info["department"]),
+                ]:
+                    if val and getattr(user, field) != val:
+                        setattr(user, field, val)
+                        changed = True
+                if changed:
+                    user.updated_at = datetime.now(timezone.utc)
+                    db.commit()
+            return {"token": _create_token(user.id), "user": user, "auth_method": "ad"}
+
+    # ── 2. Fall back to local DB login (always active) ───────────────────
     user = db.query(User).filter(
-        User.email == body.email.lower().strip(),
+        User.email == email,
         User.deleted_at.is_(None),
     ).first()
     if not user or not user.password_hash:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not _verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"token": _create_token(user.id), "user": user}
+    return {"token": _create_token(user.id), "user": user, "auth_method": "local"}
 
 
 @router.post("/demo", response_model=TokenResponse)
